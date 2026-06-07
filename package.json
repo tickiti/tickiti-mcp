@@ -9,6 +9,7 @@
   "scripts": {
     "build": "tsc",
     "manifest": "node scripts/build-manifest.mjs",
+    "test:paths": "node tests/all-paths.mjs",
     "dev": "tsx src/server.ts",
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit"
