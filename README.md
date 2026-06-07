@@ -117,4 +117,4 @@ There is an end-to-end sweep over every endpoint in `tests/all-paths.mjs`
 
 ## License
 
-© Oxenic. All rights reserved. (A licence will be added here.)
+[MIT](LICENSE) © Oxenic

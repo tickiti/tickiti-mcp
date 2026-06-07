@@ -2,7 +2,11 @@
   "name": "tickiti-mcp",
   "version": "0.1.0",
   "description": "MCP server: a shim over the Tickiti Public API v1",
+  "license": "MIT",
   "type": "module",
+  "repository": { "type": "git", "url": "git+https://github.com/tickiti/tickiti-mcp.git" },
+  "homepage": "https://docs.tickiti.com/topic/mcp_server/",
+  "bugs": { "url": "https://github.com/tickiti/tickiti-mcp/issues" },
   "bin": {
     "tickiti-mcp": "dist/server.js"
   },
