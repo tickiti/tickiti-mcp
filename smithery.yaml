@@ -1,0 +1,28 @@
+# Smithery configuration — https://smithery.ai/docs
+# Local stdio MCP server: each user supplies their own Tickiti base URL + API token.
+startCommand:
+  type: stdio
+  configSchema:
+    type: object
+    required:
+      - tickitiApiBase
+      - tickitiApiToken
+    properties:
+      tickitiApiBase:
+        type: string
+        description: "Your Tickiti install's base URL, no trailing slash (e.g. https://support.example.com)."
+      tickitiApiToken:
+        type: string
+        description: "Tickiti API token from Administration → API keys. Its abilities gate what the server can do."
+  commandFunction: |-
+    (config) => ({
+      command: 'node',
+      args: ['dist/server.js'],
+      env: {
+        TICKITI_API_BASE: config.tickitiApiBase,
+        TICKITI_API_TOKEN: config.tickitiApiToken
+      }
+    })
+  exampleConfig:
+    tickitiApiBase: https://support.example.com
+    tickitiApiToken: YOUR_TICKITI_API_TOKEN
