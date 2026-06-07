@@ -1,0 +1,25 @@
+{
+  "name": "tickiti-mcp",
+  "version": "0.1.0",
+  "description": "MCP server: a shim over the Tickiti Public API v1",
+  "type": "module",
+  "bin": {
+    "tickiti-mcp": "dist/server.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "manifest": "node scripts/build-manifest.mjs",
+    "dev": "tsx src/server.ts",
+    "start": "node dist/server.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}
