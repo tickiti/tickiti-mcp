@@ -2,7 +2,7 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.tickiti/tickiti-mcp",
   "title": "Tickiti",
-  "description": "Exposes the Tickiti helpdesk API (v1) to AI assistants — create and answer tickets, query the ticket list, run reports, and reach the full administrative surface.",
+  "description": "Connect AI assistants to the Tickiti helpdesk API: tickets, queries, reports and admin.",
   "version": "0.1.0",
   "websiteUrl": "https://docs.tickiti.com/topic/mcp_server/",
   "repository": {
