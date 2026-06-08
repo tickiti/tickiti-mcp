@@ -103,7 +103,16 @@ export function registerTicketTools(server: McpServer): void {
         search_object: z
           .record(z.any())
           .optional()
-          .describe("Raw search payload, e.g. { search_perspective, search_perspective_id, ... }"),
+          .describe(
+            "Search payload: { search_perspective?, search_perspective_id?, " +
+              "criteria?: [{ mode, tokens: [...] }] }. Same-mode criteria OR together, " +
+              "different modes AND. Valid modes: subject, content, subject_content, " +
+              "assigned (email), participant, priority, raised (originator email), queue " +
+              "(name), status, watchlist (id), hashtag, ticket_number, and the date " +
+              "filters created_from / created_to / updated_from / updated_to " +
+              "(tokens: ['YYYY-MM-DD'], compared as UTC). get_search_items returns the " +
+              "live catalog in `available_modes`.",
+          ),
       },
     },
     async (args) => {
