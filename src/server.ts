@@ -3,6 +3,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { assertConfig } from "./client.js";
 import { registerTicketTools } from "./tools/tickets.js";
+import { registerTicketReadTools } from "./tools/ticket-reads.js";
 import { registerReadTools } from "./tools/reads.js";
 import { registerGenericTools } from "./tools/generic.js";
 
@@ -26,6 +27,7 @@ async function main(): Promise<void> {
   });
 
   registerTicketTools(server);
+  registerTicketReadTools(server);
   registerReadTools(server);
   registerGenericTools(server);
 
@@ -33,7 +35,7 @@ async function main(): Promise<void> {
   await server.connect(transport);
 
   // stdio servers must not write to stdout (it's the JSON-RPC channel).
-  console.error("tickiti-mcp ready (stdio) — tickets + reads + generic registered.");
+  console.error("tickiti-mcp ready (stdio) — tickets + ticket-reads + reads + generic registered.");
 }
 
 main().catch((err) => {
