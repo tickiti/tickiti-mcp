@@ -77,13 +77,27 @@ export function registerTicketTools(server: McpServer): void {
     {
       title: "Respond to ticket",
       description:
-        "Add a response to an existing ticket (reopens it if closed). " +
-        "Set is_internal=true for a staff-only note.",
+        "Add a response to an existing ticket. Set is_internal=true for a staff-only note. " +
+        "To change the ticket's status, pass status: omit it and posting auto-reopens a " +
+        "non-open ticket; pass 'on-hold' (with on_hold_until=YYYY-MM-DD) to park it, or " +
+        "'open' to reopen/clear a hold. content may be omitted ONLY when supplying a status " +
+        "change (a status-only response); otherwise content is required.",
       inputSchema: {
         ticket_number: z.string().describe("Ticket.number (the human ticket reference)"),
         from_email: z.string().email().describe("Author email; added as a participant if new"),
-        content: z.string().describe("Response body (HTML)"),
+        content: z
+          .string()
+          .optional()
+          .describe("Response body (HTML). Optional only when status is supplied (status-only response)."),
         is_internal: z.boolean().optional(),
+        status: z
+          .enum(["open", "on-hold"])
+          .optional()
+          .describe("Set the ticket status. 'on-hold' requires on_hold_until; 'open' clears any hold."),
+        on_hold_until: z
+          .string()
+          .optional()
+          .describe("Date (YYYY-MM-DD) to hold until; required when status='on-hold'."),
       },
     },
     async (args) => toToolResult(await callV1("tickets/respond", args, { idempotent: true })),
