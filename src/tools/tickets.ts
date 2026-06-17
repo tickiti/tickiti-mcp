@@ -2,6 +2,25 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { callV1 } from "../client.js";
 import { toToolResult } from "../result.js";
+import { inlineImagesIntoContent, SUPPORTED_IMAGE_EXTS, type InlineAttachment } from "../attachments.js";
+
+/** Shared Zod shape for the inline-image attachments param on the write tools. */
+const attachmentsShape = z
+  .array(
+    z.object({
+      path: z.string().describe("Path to an image file on the machine running the MCP (this dev box). The shim reads and base64-encodes it — never pass base64 yourself."),
+      name: z.string().optional().describe("Placeholder key / display hint; defaults to the file's basename."),
+      placeholder: z
+        .string()
+        .optional()
+        .describe("Token in `content` to replace with this image (controls position). Defaults to {{attach:<name>}}; if absent from the body, the image is appended at the end."),
+    }),
+  )
+  .optional()
+  .describe(
+    "Inline images to embed in the body. Pass local file PATHS; the shim reads each file and embeds it as a data-URI which the server stores as a cid: attachment. " +
+      "Supported: " + SUPPORTED_IMAGE_EXTS.join(", ") + ".",
+  );
 
 /**
  * Tickets family — the agent-valuable core, and the family that exercises both
@@ -37,6 +56,7 @@ export function registerTicketTools(server: McpServer): void {
         queue_name: z.string().optional().describe("TicketQueue.name; omit for Inbox"),
         is_public: z.boolean().optional(),
         use_passed_originator_as_responder: z.boolean().optional(),
+        attachments: attachmentsShape,
       },
     },
     async (args) => {
@@ -56,6 +76,16 @@ export function registerTicketTools(server: McpServer): void {
       const data: Record<string, unknown> = { ...((a.data as Record<string, unknown>) ?? {}) };
       if (a.subject !== undefined) data.subject = a.subject;
       if (a.content !== undefined) data.content = a.content;
+
+      // Inline images: embed the local files as data-URIs in the body. The
+      // server (create_ticket → TicketActionService) converts them to cid:
+      // attachments, exactly like respond_to_ticket.
+      if (Array.isArray(a.attachments) && a.attachments.length) {
+        data.content = inlineImagesIntoContent(
+          String((a.content as string | undefined) ?? data.content ?? ""),
+          a.attachments as InlineAttachment[],
+        );
+      }
 
       if (a.template_identifier !== undefined) body.template_identifier = a.template_identifier;
       if (a.intervention !== undefined) body.intervention = a.intervention;
@@ -81,7 +111,9 @@ export function registerTicketTools(server: McpServer): void {
         "To change the ticket's status, pass status: omit it and posting auto-reopens a " +
         "non-open ticket; pass 'on-hold' (with on_hold_until=YYYY-MM-DD) to park it, or " +
         "'open' to reopen/clear a hold. content may be omitted ONLY when supplying a status " +
-        "change (a status-only response); otherwise content is required.",
+        "change (a status-only response); otherwise content is required. " +
+        "To include inline images, pass `attachments` as local file paths and (optionally) " +
+        "place {{attach:<name>}} tokens in `content` where each image should appear.",
       inputSchema: {
         ticket_number: z.string().describe("Ticket.number (the human ticket reference)"),
         from_email: z.string().email().describe("Author email; added as a participant if new"),
@@ -98,9 +130,20 @@ export function registerTicketTools(server: McpServer): void {
           .string()
           .optional()
           .describe("Date (YYYY-MM-DD) to hold until; required when status='on-hold'."),
+        attachments: attachmentsShape,
       },
     },
-    async (args) => toToolResult(await callV1("tickets/respond", args, { idempotent: true })),
+    async (args) => {
+      const { attachments, ...rest } = args as Record<string, unknown>;
+      const body: Record<string, unknown> = { ...rest };
+      if (Array.isArray(attachments) && attachments.length) {
+        body.content = inlineImagesIntoContent(
+          String(rest.content ?? ""),
+          attachments as InlineAttachment[],
+        );
+      }
+      return toToolResult(await callV1("tickets/respond", body, { idempotent: true }));
+    },
   );
 
   server.registerTool(
