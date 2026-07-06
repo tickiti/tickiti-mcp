@@ -2,7 +2,13 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { callV1 } from "../client.js";
 import { toToolResult } from "../result.js";
-import { inlineImagesIntoContent, SUPPORTED_IMAGE_EXTS, type InlineAttachment } from "../attachments.js";
+import {
+  inlineImagesIntoContent,
+  uploadOutOfLineFiles,
+  SUPPORTED_IMAGE_EXTS,
+  type InlineAttachment,
+  type OutOfLineFile,
+} from "../attachments.js";
 
 /** Shared Zod shape for the inline-image attachments param on the write tools. */
 const attachmentsShape = z
@@ -19,7 +25,22 @@ const attachmentsShape = z
   .optional()
   .describe(
     "Inline images to embed in the body. Pass local file PATHS; the shim reads each file and embeds it as a data-URI which the server stores as a cid: attachment. " +
-      "Supported: " + SUPPORTED_IMAGE_EXTS.join(", ") + ".",
+      "Supported: " + SUPPORTED_IMAGE_EXTS.join(", ") + ". For downloadable (non-inline) file attachments of any type, use `files` instead.",
+  );
+
+/** Shared Zod shape for out-of-line (downloadable) file attachments. */
+const filesShape = z
+  .array(
+    z.object({
+      path: z.string().describe("Path to a file on the machine running the MCP (this dev box). The shim uploads it — never pass base64 yourself."),
+      name: z.string().optional().describe("Attachment display name; defaults to the file's basename."),
+    }),
+  )
+  .optional()
+  .describe(
+    "Files to attach as downloadable (out-of-line) attachments — ANY file type (pdf, csv, zip, logs, images-as-downloads, …), up to 25 MB each. " +
+      "The shim uploads each file and references it on the response; it is stored as a normal attachment, NOT embedded in the body. " +
+      "For images embedded inline in the body, use `attachments` instead.",
   );
 
 /**
@@ -57,6 +78,7 @@ export function registerTicketTools(server: McpServer): void {
         is_public: z.boolean().optional(),
         use_passed_originator_as_responder: z.boolean().optional(),
         attachments: attachmentsShape,
+        files: filesShape,
       },
     },
     async (args) => {
@@ -87,6 +109,13 @@ export function registerTicketTools(server: McpServer): void {
         );
       }
 
+      // Out-of-line files: upload each and reference by sha256 in the top-level
+      // `attachments` field (create_ticket stores them non-inline on the first
+      // response). Distinct from inline images, which are embedded in the body.
+      if (Array.isArray(a.files) && a.files.length) {
+        body.attachments = await uploadOutOfLineFiles(a.files as OutOfLineFile[]);
+      }
+
       if (a.template_identifier !== undefined) body.template_identifier = a.template_identifier;
       if (a.intervention !== undefined) body.intervention = a.intervention;
       if (a.uid !== undefined) body.uid = a.uid;
@@ -113,9 +142,18 @@ export function registerTicketTools(server: McpServer): void {
         "'open' to reopen/clear a hold. content may be omitted ONLY when supplying a status " +
         "change (a status-only response); otherwise content is required. " +
         "To include inline images, pass `attachments` as local file paths and (optionally) " +
-        "place {{attach:<name>}} tokens in `content` where each image should appear.",
+        "place {{attach:<name>}} tokens in `content` where each image should appear. " +
+        "To attach downloadable files of any type, pass `files` as local file paths. " +
+        "Identify the ticket by ticket_number OR ticket_id (internal DB id) — supply exactly one.",
       inputSchema: {
-        ticket_number: z.string().describe("Ticket.number (the human ticket reference)"),
+        ticket_number: z
+          .string()
+          .optional()
+          .describe("Ticket.number (the 6-digit human reference); supply this OR ticket_id"),
+        ticket_id: z
+          .union([z.string(), z.number()])
+          .optional()
+          .describe("Ticket.id (internal DB id); supply this OR ticket_number"),
         from_email: z.string().email().describe("Author email; added as a participant if new"),
         content: z
           .string()
@@ -131,16 +169,21 @@ export function registerTicketTools(server: McpServer): void {
           .optional()
           .describe("Date (YYYY-MM-DD) to hold until; required when status='on-hold'."),
         attachments: attachmentsShape,
+        files: filesShape,
       },
     },
     async (args) => {
-      const { attachments, ...rest } = args as Record<string, unknown>;
+      const { attachments, files, ...rest } = args as Record<string, unknown>;
       const body: Record<string, unknown> = { ...rest };
       if (Array.isArray(attachments) && attachments.length) {
         body.content = inlineImagesIntoContent(
           String(rest.content ?? ""),
           attachments as InlineAttachment[],
         );
+      }
+      // Out-of-line files: upload each and reference by sha256 (stored non-inline).
+      if (Array.isArray(files) && files.length) {
+        body.attachments = await uploadOutOfLineFiles(files as OutOfLineFile[]);
       }
       return toToolResult(await callV1("tickets/respond", body, { idempotent: true }));
     },

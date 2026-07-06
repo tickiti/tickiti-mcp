@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { basename } from "node:path";
 
 /**
  * The single chokepoint every tool calls through. Owns:
@@ -67,6 +69,79 @@ export async function callV1(
       method: "POST",
       headers,
       body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+  } catch (err) {
+    clearTimeout(timer);
+    const reason =
+      err instanceof Error && err.name === "AbortError"
+        ? `request timed out after ${TIMEOUT_MS}ms`
+        : `network error: ${err instanceof Error ? err.message : String(err)}`;
+    return { ok: false, status: 0, body: null, summary: `Failed to reach ${url} — ${reason}` };
+  } finally {
+    clearTimeout(timer);
+  }
+
+  const text = await res.text();
+  let parsed: unknown = text;
+  const ct = res.headers.get("content-type") ?? "";
+  if (ct.includes("application/json") && text) {
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      /* leave parsed as raw text */
+    }
+  }
+
+  return {
+    ok: res.ok,
+    status: res.status,
+    body: parsed,
+    summary: res.ok ? `${res.status} OK` : summariseError(res.status, parsed),
+  };
+}
+
+/**
+ * Upload one local file to POST /api/v1/tickets/attachment-upload (multipart),
+ * for out-of-line (non-inline) attachments. The endpoint is content-addressed
+ * by sha256, so a re-upload of identical bytes is a no-op and no idempotency
+ * key is needed. Reads the file off disk here — the model never handles bytes.
+ * Returns the parsed { sha256, name, file_size } on success.
+ */
+export async function uploadFileV1(
+  filePath: string,
+  name?: string,
+): Promise<ApiResult> {
+  const url = `${BASE}/api/v1/tickets/attachment-upload`;
+
+  let bytes: Buffer;
+  try {
+    bytes = readFileSync(filePath);
+  } catch (e) {
+    return {
+      ok: false,
+      status: 0,
+      body: null,
+      summary: `Cannot read attachment file ${filePath}: ${e instanceof Error ? e.message : String(e)}`,
+    };
+  }
+
+  const fileName = name ?? basename(filePath);
+  const form = new FormData();
+  // Wrap in a fresh Uint8Array so the Blob part is ArrayBuffer-backed (a raw
+  // Node Buffer's ArrayBufferLike doesn't satisfy the BlobPart DOM type).
+  form.append("file", new Blob([new Uint8Array(bytes)]), fileName);
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: "POST",
+      // No Content-Type — fetch sets the multipart boundary itself.
+      headers: { Accept: "application/json", Authorization: `Bearer ${TOKEN}` },
+      body: form,
       signal: controller.signal,
     });
   } catch (err) {

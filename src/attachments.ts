@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { basename, extname } from "node:path";
+import { uploadFileV1 } from "./client.js";
 
 /**
  * Inline-image support for the ticket write tools.
@@ -81,4 +82,53 @@ export function inlineImagesIntoContent(
   }
 
   return out;
+}
+
+/**
+ * Out-of-line (non-inline) file attachments for the ticket write tools — the
+ * counterpart to inline images. Any file type is allowed (subject to the
+ * tenant's attachment extension rules); it is stored as a downloadable
+ * attachment on the response, not embedded in the body.
+ *
+ * The flow mirrors the Tickiti web composer: upload the bytes to
+ * tickets/attachment-upload (content-addressed by sha256), then reference the
+ * returned { sha256, name, file_size } in the create/respond call's
+ * `attachments` field. As with inline images, the model passes a local FILE
+ * PATH and this shim reads/uploads the bytes — never base64 through context.
+ */
+export interface OutOfLineFile {
+  /** Path to the file on the machine running the MCP. */
+  path: string;
+  /** Attachment display name; defaults to the file's basename. */
+  name?: string;
+}
+
+/** One sha256-referenced attachment, the shape the API's `attachments[]` expects. */
+export interface AttachmentRef {
+  sha256: string;
+  name: string;
+  file_size: number;
+}
+
+/**
+ * Upload each file and return its { sha256, name, file_size } reference. Throws
+ * with the API's own reason (e.g. a blocked extension, oversize, auth) on the
+ * first failure, so the tool surfaces exactly why an attachment was refused.
+ */
+export async function uploadOutOfLineFiles(
+  files: OutOfLineFile[],
+): Promise<AttachmentRef[]> {
+  const refs: AttachmentRef[] = [];
+  for (const f of files) {
+    const r = await uploadFileV1(f.path, f.name);
+    const data =
+      r.ok && r.body && typeof r.body === "object"
+        ? (r.body as { data?: AttachmentRef }).data
+        : undefined;
+    if (!r.ok || !data?.sha256) {
+      throw new Error(`Attachment upload failed for ${f.path} — ${r.summary}`);
+    }
+    refs.push({ sha256: data.sha256, name: data.name, file_size: data.file_size });
+  }
+  return refs;
 }

@@ -51,14 +51,16 @@ export function registerTicketReadTools(server: McpServer): void {
     {
       title: "Get a ticket with its full thread",
       description:
-        "Fetch one ticket by number with its header and full response thread " +
-        "(public + internal staff notes) plus attachment metadata. Requires tickets:read.",
+        "Fetch one ticket with its header and full response thread " +
+        "(public + internal staff notes) plus attachment metadata. Identify it by " +
+        "ticket_number OR ticket_id (internal DB id) — supply exactly one. Requires tickets:read.",
       inputSchema: {
-        ticket_number: z.string().describe("Ticket.number (the human ticket reference)"),
+        ticket_number: z.string().optional().describe("Ticket.number (the 6-digit human reference); supply this OR ticket_id"),
+        ticket_id: z.union([z.string(), z.number()]).optional().describe("Ticket.id (internal DB id); supply this OR ticket_number"),
       },
     },
-    async ({ ticket_number }) =>
-      toToolResult(await callV1("tickets/show", { ticket_number })),
+    async ({ ticket_number, ticket_id }) =>
+      toToolResult(await callV1("tickets/show", compact({ ticket_number, ticket_id }))),
   );
 
   server.registerTool(
@@ -67,13 +69,15 @@ export function registerTicketReadTools(server: McpServer): void {
       title: "List a ticket's responses",
       description:
         "List the responses on a ticket (bodies, public/internal flag, author and " +
-        "attachment metadata). Requires tickets:read.",
+        "attachment metadata). Identify it by ticket_number OR ticket_id (internal DB id) " +
+        "— supply exactly one. Requires tickets:read.",
       inputSchema: {
-        ticket_number: z.string().describe("Ticket.number (the human ticket reference)"),
+        ticket_number: z.string().optional().describe("Ticket.number (the 6-digit human reference); supply this OR ticket_id"),
+        ticket_id: z.union([z.string(), z.number()]).optional().describe("Ticket.id (internal DB id); supply this OR ticket_number"),
       },
     },
-    async ({ ticket_number }) =>
-      toToolResult(await callV1("tickets/responses", { ticket_number })),
+    async ({ ticket_number, ticket_id }) =>
+      toToolResult(await callV1("tickets/responses", compact({ ticket_number, ticket_id }))),
   );
 
   server.registerTool(
@@ -87,7 +91,12 @@ export function registerTicketReadTools(server: McpServer): void {
       inputSchema: {
         ticket_number: z
           .string()
-          .describe("Ticket the attachment belongs to (authorisation scope)"),
+          .optional()
+          .describe("Ticket the attachment belongs to (authorisation scope); supply this OR ticket_id"),
+        ticket_id: z
+          .union([z.string(), z.number()])
+          .optional()
+          .describe("Ticket.id (internal DB id); supply this OR ticket_number"),
         response_attachment_id: z
           .union([z.string(), z.number()])
           .describe("ResponseAttachment.id (from get_ticket / list_responses)"),
@@ -97,8 +106,8 @@ export function registerTicketReadTools(server: McpServer): void {
           .describe("Set true to accept a 'review'-gated attachment type"),
       },
     },
-    async ({ ticket_number, response_attachment_id, confirm }) => {
-      const body: Record<string, unknown> = { ticket_number, response_attachment_id };
+    async ({ ticket_number, ticket_id, response_attachment_id, confirm }) => {
+      const body: Record<string, unknown> = compact({ ticket_number, ticket_id, response_attachment_id });
       if (confirm) body.intent = "review_ok";
       return toAttachmentResult(await callV1("tickets/attachment", body));
     },
