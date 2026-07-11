@@ -17,8 +17,12 @@ export function registerReadTools(server: McpServer): void {
   simpleRead(server, "list_watchlists", "List watchlists", "settings/watchlists");
   simpleRead(server, "list_stock_responses", "List stock (canned) responses", "settings/stock-responses");
 
-  // ---- workflow ----
-  simpleRead(server, "list_queues", "List ticket queues", "workflow/queues");
+  // ---- queues ----
+  // Uses the tickets-family endpoint (tickets:read) so a ticket-scoped token can
+  // enumerate queue names it needs for create_ticket / routing. Queue admin
+  // (create/rename/delete) stays under the admin-gated workflow family, reachable
+  // via tickiti_call('workflow/queues', …) with a workflow token.
+  simpleRead(server, "list_queues", "List ticket queues", "tickets/queues");
 
   server.registerTool(
     "list_workflow",

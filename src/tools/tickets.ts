@@ -10,6 +10,11 @@ import {
   type OutOfLineFile,
 } from "../attachments.js";
 
+/** Strip undefined keys so the API call body only carries supplied fields. */
+function compact(obj: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined));
+}
+
 /** Shared Zod shape for the inline-image attachments param on the write tools. */
 const attachmentsShape = z
   .array(
@@ -137,14 +142,17 @@ export function registerTicketTools(server: McpServer): void {
       title: "Respond to ticket",
       description:
         "Add a response to an existing ticket. Set is_internal=true for a staff-only note. " +
-        "To change the ticket's status, pass status: omit it and posting auto-reopens a " +
-        "non-open ticket; pass 'on-hold' (with on_hold_until=YYYY-MM-DD) to park it, or " +
-        "'open' to reopen/clear a hold. content may be omitted ONLY when supplying a status " +
-        "change (a status-only response); otherwise content is required. " +
+        "You can change ticket attributes in the same call: status ('open' | 'on-hold' | " +
+        "'closed'), on_hold_until (YYYY-MM-DD, required with 'on-hold'), assigned_to_email " +
+        "(email or 'Unassigned'), priority (Low|Normal|High|Urgent or 10|20|30|40), resolved " +
+        "(resolution-category id or name), and add_participants / remove_participants. " +
+        "Omitting status auto-reopens a non-open ticket on post. content may be omitted ONLY " +
+        "when supplying a status/attribute change; otherwise content is required. " +
         "To include inline images, pass `attachments` as local file paths and (optionally) " +
         "place {{attach:<name>}} tokens in `content` where each image should appear. " +
         "To attach downloadable files of any type, pass `files` as local file paths. " +
-        "Identify the ticket by ticket_number OR ticket_id (internal DB id) — supply exactly one.",
+        "Identify the ticket by ticket_number OR ticket_id (internal DB id) — supply exactly one. " +
+        "To close a ticket, prefer close_ticket; to edit an existing response, use edit_response.",
       inputSchema: {
         ticket_number: z
           .string()
@@ -158,16 +166,36 @@ export function registerTicketTools(server: McpServer): void {
         content: z
           .string()
           .optional()
-          .describe("Response body (HTML). Optional only when status is supplied (status-only response)."),
+          .describe("Response body (HTML). Optional only when a status/attribute change is supplied."),
         is_internal: z.boolean().optional(),
         status: z
-          .enum(["open", "on-hold"])
+          .enum(["open", "on-hold", "closed"])
           .optional()
-          .describe("Set the ticket status. 'on-hold' requires on_hold_until; 'open' clears any hold."),
+          .describe("Set the ticket status. 'on-hold' requires on_hold_until; 'open'/'closed' clear any hold."),
         on_hold_until: z
           .string()
           .optional()
           .describe("Date (YYYY-MM-DD) to hold until; required when status='on-hold'."),
+        assigned_to_email: z
+          .string()
+          .optional()
+          .describe("Reassign the ticket to this staff email, or 'Unassigned' to clear."),
+        priority: z
+          .string()
+          .optional()
+          .describe("Set priority: Low|Normal|High|Urgent (or 10|20|30|40)."),
+        resolved: z
+          .string()
+          .optional()
+          .describe("Resolution category (id or name); requires the resolution-tracking plan."),
+        add_participants: z
+          .array(z.string().email())
+          .optional()
+          .describe("Emails to add as participants."),
+        remove_participants: z
+          .array(z.string().email())
+          .optional()
+          .describe("Emails to remove as participants (the originator can't be removed)."),
         attachments: attachmentsShape,
         files: filesShape,
       },
@@ -187,6 +215,96 @@ export function registerTicketTools(server: McpServer): void {
       }
       return toToolResult(await callV1("tickets/respond", body, { idempotent: true }));
     },
+  );
+
+  server.registerTool(
+    "close_ticket",
+    {
+      title: "Close (and optionally resolve) a ticket",
+      description:
+        "Close a ticket. Optionally pass content to post a final reply as it closes, and " +
+        "resolved (resolution-category id or name) to record the resolution. from_email is " +
+        "optional — defaults to the token owner. Identify the ticket by ticket_number OR " +
+        "ticket_id. Requires tickets:write.",
+      inputSchema: {
+        ticket_number: z.string().optional().describe("Ticket.number; supply this OR ticket_id"),
+        ticket_id: z.union([z.string(), z.number()]).optional().describe("Ticket.id (internal DB id)"),
+        from_email: z.string().email().optional().describe("Author email; defaults to the token owner"),
+        content: z.string().optional().describe("Optional closing reply body (HTML)"),
+        is_internal: z.boolean().optional().describe("Post the closing note as staff-only (default public if content given)"),
+        resolved: z.string().optional().describe("Resolution category id or name (resolution-tracking plan)"),
+      },
+    },
+    async (args) => toToolResult(await callV1("tickets/close", compact({ ...(args as Record<string, unknown>) }), { idempotent: true })),
+  );
+
+  server.registerTool(
+    "edit_response",
+    {
+      title: "Edit a response in place (no notification)",
+      description:
+        "Rewrite an existing staff response's body. Sends NO notification — the correct way " +
+        "to silently fix content already on a ticket (e.g. swap a stale link) without emailing " +
+        "the customer. Staff responses only; customer and audit-only responses can't be edited. " +
+        "Get the response_id from get_ticket / list_responses. Requires tickets:write.",
+      inputSchema: {
+        response_id: z.union([z.string(), z.number()]).describe("Response.id to rewrite"),
+        content: z.string().describe("New response body (HTML). Inline data: images are extracted to attachments."),
+      },
+    },
+    async ({ response_id, content }) =>
+      toToolResult(await callV1("tickets/response-update", { response_id, content }, { idempotent: true })),
+  );
+
+  server.registerTool(
+    "delete_response",
+    {
+      title: "Delete a response",
+      description:
+        "Soft-delete a response by id. Get the response_id from get_ticket / list_responses. " +
+        "Requires tickets:write.",
+      inputSchema: {
+        response_id: z.union([z.string(), z.number()]).describe("Response.id to delete"),
+      },
+    },
+    async ({ response_id }) =>
+      toToolResult(await callV1("tickets/response-delete", { response_id }, { idempotent: true })),
+  );
+
+  server.registerTool(
+    "add_participants",
+    {
+      title: "Add ticket participants",
+      description:
+        "Add one or more participants to a ticket (records a body-less audit entry). " +
+        "from_email is optional (defaults to the token owner). Identify the ticket by " +
+        "ticket_number OR ticket_id. Requires tickets:write.",
+      inputSchema: {
+        ticket_number: z.string().optional().describe("Ticket.number; supply this OR ticket_id"),
+        ticket_id: z.union([z.string(), z.number()]).optional().describe("Ticket.id (internal DB id)"),
+        participants: z.array(z.string().email()).min(1).describe("Emails to add"),
+        from_email: z.string().email().optional().describe("Author email; defaults to the token owner"),
+      },
+    },
+    async (args) => toToolResult(await callV1("tickets/participants/add", compact({ ...(args as Record<string, unknown>) }), { idempotent: true })),
+  );
+
+  server.registerTool(
+    "remove_participants",
+    {
+      title: "Remove ticket participants",
+      description:
+        "Remove one or more participants from a ticket (records a body-less audit entry). " +
+        "The ticket originator can't be removed. from_email is optional (defaults to the token " +
+        "owner). Identify the ticket by ticket_number OR ticket_id. Requires tickets:write.",
+      inputSchema: {
+        ticket_number: z.string().optional().describe("Ticket.number; supply this OR ticket_id"),
+        ticket_id: z.union([z.string(), z.number()]).optional().describe("Ticket.id (internal DB id)"),
+        participants: z.array(z.string().email()).min(1).describe("Emails to remove"),
+        from_email: z.string().email().optional().describe("Author email; defaults to the token owner"),
+      },
+    },
+    async (args) => toToolResult(await callV1("tickets/participants/remove", compact({ ...(args as Record<string, unknown>) }), { idempotent: true })),
   );
 
   server.registerTool(

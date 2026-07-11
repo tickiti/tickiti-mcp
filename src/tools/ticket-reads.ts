@@ -114,6 +114,84 @@ export function registerTicketReadTools(server: McpServer): void {
   );
 
   server.registerTool(
+    "download_attachment",
+    {
+      title: "Download a response attachment to a local file",
+      description:
+        "Save a response attachment to a local file path, streaming it in byte-range chunks " +
+        "so it works for files ABOVE the 25 MiB single-shot get_attachment cap (videos, large " +
+        "diagnostics, …). The bytes are written to disk and never pass through the model's " +
+        "context — the right tool for big attachments. Returns a manifest { path, bytes, mime }. " +
+        "Requires tickets:read. 'path' is a path on the machine running the MCP (an existing " +
+        "file is overwritten).",
+      inputSchema: {
+        ticket_number: z.string().optional().describe("Ticket the attachment belongs to; supply this OR ticket_id"),
+        ticket_id: z.union([z.string(), z.number()]).optional().describe("Ticket.id (internal DB id)"),
+        response_attachment_id: z.union([z.string(), z.number()]).describe("ResponseAttachment.id"),
+        path: z.string().describe("Absolute local output path (overwritten if present)"),
+        confirm: z.boolean().optional().describe("Set true to accept a 'review'-gated attachment type"),
+        chunk_bytes: z
+          .number()
+          .int()
+          .min(1)
+          .max(25 * 1024 * 1024)
+          .optional()
+          .describe("Bytes per range request (default 8 MiB; each must be ≤ 25 MiB)"),
+      },
+    },
+    async ({ ticket_number, ticket_id, response_attachment_id, path, confirm, chunk_bytes }) => {
+      const chunk = chunk_bytes ?? 8 * 1024 * 1024;
+      const out = createWriteStream(path, { flags: "w" });
+      const finished = new Promise<void>((resolve, reject) => {
+        out.on("error", reject);
+        out.on("finish", () => resolve());
+      });
+
+      let offset = 0;
+      let total = 0;
+      let mime = "application/octet-stream";
+      try {
+        for (;;) {
+          const body: Record<string, unknown> = compact({
+            ticket_number,
+            ticket_id,
+            response_attachment_id,
+            offset,
+            length: chunk,
+          });
+          if (confirm) body.intent = "review_ok";
+
+          const r = await callV1("tickets/attachment", body);
+          if (!r.ok) {
+            out.end();
+            return toToolResult(r); // surface the API error (403/404/…) verbatim
+          }
+          const data = (r.body as { data?: Record<string, unknown> }).data ?? {};
+          if (offset === 0) mime = String(data.mime_type ?? mime);
+          total = Number(data.file_size ?? total);
+          const b64 = String(data.content_base64 ?? "");
+          const buf = Buffer.from(b64, "base64");
+          out.write(buf);
+          offset += buf.length;
+          if (Boolean(data.eof) || buf.length === 0 || offset >= total) break;
+        }
+      } finally {
+        out.end();
+      }
+      await finished;
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify({ ok: true, path, bytes: offset, file_size: total, mime }, null, 2),
+          },
+        ],
+      };
+    },
+  );
+
+  server.registerTool(
     "query_responses",
     {
       title: "Query responses across tickets",
