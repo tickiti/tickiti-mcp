@@ -140,54 +140,90 @@ export function registerTicketReadTools(server: McpServer): void {
       },
     },
     async ({ ticket_number, ticket_id, response_attachment_id, path, confirm, chunk_bytes }) => {
-      const chunk = chunk_bytes ?? 8 * 1024 * 1024;
+      const CAP = 25 * 1024 * 1024;
+      const chunk = Math.min(chunk_bytes ?? 8 * 1024 * 1024, CAP);
+      const intent: Record<string, unknown> = confirm ? { intent: "review_ok" } : {};
+
       const out = createWriteStream(path, { flags: "w" });
-      const finished = new Promise<void>((resolve, reject) => {
-        out.on("error", reject);
-        out.on("finish", () => resolve());
+      // Lifecycle as a promise that NEVER rejects (resolves Error|null) and that we
+      // ALWAYS await before returning — so a stream 'error' can never become a
+      // detached unhandled rejection that takes the whole stdio server down.
+      const closed = new Promise<Error | null>((resolve) => {
+        out.on("error", (e) => resolve(e instanceof Error ? e : new Error(String(e))));
+        out.on("close", () => resolve(null)); // 'close' fires after end() AND after destroy()
+      });
+      const fail = (text: string) => ({
+        isError: true as const,
+        content: [{ type: "text" as const, text }],
       });
 
-      let offset = 0;
-      let total = 0;
-      let mime = "application/octet-stream";
       try {
-        for (;;) {
-          const body: Record<string, unknown> = compact({
-            ticket_number,
-            ticket_id,
-            response_attachment_id,
-            offset,
-            length: chunk,
-          });
-          if (confirm) body.intent = "review_ok";
-
-          const r = await callV1("tickets/attachment", body);
-          if (!r.ok) {
-            out.end();
-            return toToolResult(r); // surface the API error (403/404/…) verbatim
-          }
-          const data = (r.body as { data?: Record<string, unknown> }).data ?? {};
-          if (offset === 0) mime = String(data.mime_type ?? mime);
-          total = Number(data.file_size ?? total);
-          const b64 = String(data.content_base64 ?? "");
-          const buf = Buffer.from(b64, "base64");
-          out.write(buf);
-          offset += buf.length;
-          if (Boolean(data.eof) || buf.length === 0 || offset >= total) break;
+        // Probe with a single UN-ranged read — identical to get_attachment, so it
+        // works even against a server that has not deployed the offset/length
+        // variant. Anything at/under the 25 MiB single-shot cap is written here and
+        // never touches the ranged path.
+        const first = await callV1(
+          "tickets/attachment",
+          compact({ ticket_number, ticket_id, response_attachment_id, ...intent }),
+        );
+        if (!first.ok || !first.body || typeof first.body !== "object") {
+          out.destroy();
+          await closed;
+          return toToolResult(first); // surface 403/404/422/… verbatim
         }
-      } finally {
-        out.end();
-      }
-      await finished;
+        const d0 = (first.body as { data?: Record<string, unknown> }).data ?? {};
+        const mime = String(d0.mime_type ?? "application/octet-stream");
+        const total = Number(d0.file_size ?? 0);
+        const b0 = typeof d0.content_base64 === "string" ? d0.content_base64 : "";
+        if (!b0) {
+          out.destroy();
+          await closed;
+          return toToolResult(first); // no bytes in the payload — show what we got
+        }
+        let buf = Buffer.from(b0, "base64");
+        out.write(buf);
+        let offset = buf.length;
 
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify({ ok: true, path, bytes: offset, file_size: total, mime }, null, 2),
-          },
-        ],
-      };
+        // Only page with explicit ranges when the file genuinely exceeds one shot
+        // AND the server signalled there is more (i.e. it honours ranges).
+        if (total > offset && !d0.eof) {
+          for (;;) {
+            const r = await callV1(
+              "tickets/attachment",
+              compact({ ticket_number, ticket_id, response_attachment_id, offset, length: chunk, ...intent }),
+            );
+            if (!r.ok || !r.body || typeof r.body !== "object") {
+              out.destroy();
+              await closed;
+              return toToolResult(r);
+            }
+            const d = (r.body as { data?: Record<string, unknown> }).data ?? {};
+            const b = typeof d.content_base64 === "string" ? d.content_base64 : "";
+            buf = Buffer.from(b, "base64");
+            if (buf.length === 0) break; // server didn't honour the range — stop, don't spin
+            out.write(buf);
+            offset += buf.length; // strictly increasing => guaranteed to terminate
+            if (Boolean(d.eof) || offset >= total) break;
+          }
+        }
+
+        out.end();
+        const err = await closed;
+        if (err) return fail(`Error: failed writing ${path} — ${err.message}`);
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify({ ok: true, path, bytes: offset, file_size: total, mime }, null, 2),
+            },
+          ],
+        };
+      } catch (e) {
+        out.destroy();
+        await closed;
+        return fail(`Error: download_attachment failed — ${e instanceof Error ? e.message : String(e)}`);
+      }
     },
   );
 
@@ -233,9 +269,16 @@ export function registerTicketReadTools(server: McpServer): void {
     },
     async ({ path, page_size, max_records, ...filters }) => {
       const out = createWriteStream(path, { encoding: "utf8", flags: "w" });
-      const finished = new Promise<void>((resolve, reject) => {
-        out.on("error", reject);
-        out.on("finish", () => resolve());
+      // Non-rejecting lifecycle (resolves Error|null), always awaited before return —
+      // same detached-rejection hazard as download_attachment; keep it from crashing
+      // the whole server.
+      const closed = new Promise<Error | null>((resolve) => {
+        out.on("error", (e) => resolve(e instanceof Error ? e : new Error(String(e))));
+        out.on("close", () => resolve(null));
+      });
+      const fail = (text: string) => ({
+        isError: true as const,
+        content: [{ type: "text" as const, text }],
       });
 
       let cursor: { created_at: string; id: number } | undefined;
@@ -251,7 +294,8 @@ export function registerTicketReadTools(server: McpServer): void {
 
           const r = await callV1("tickets/responses/query", body);
           if (!r.ok) {
-            out.end();
+            out.destroy();
+            await closed;
             return toToolResult(r); // surface the API error verbatim
           }
 
@@ -268,10 +312,15 @@ export function registerTicketReadTools(server: McpServer): void {
           if (!next || (max_records && count >= max_records)) break;
           cursor = next;
         }
-      } finally {
-        out.end();
+      } catch (e) {
+        out.destroy();
+        await closed;
+        return fail(`Error: export_responses failed — ${e instanceof Error ? e.message : String(e)}`);
       }
-      await finished;
+
+      out.end();
+      const err = await closed;
+      if (err) return fail(`Error: failed writing ${path} — ${err.message}`);
 
       return {
         content: [

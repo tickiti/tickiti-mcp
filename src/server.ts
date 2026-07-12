@@ -44,3 +44,13 @@ main().catch((err) => {
   console.error("tickiti-mcp failed to start:", err instanceof Error ? err.message : err);
   process.exit(1);
 });
+
+// Belt-and-braces: no single tool handler should be able to take the whole stdio
+// server down. Log (never to stdout — that's the JSON-RPC channel) and keep
+// serving; individual tools still return proper MCP errors on their own path.
+process.on("unhandledRejection", (reason) => {
+  console.error("tickiti-mcp unhandledRejection:", reason instanceof Error ? (reason.stack ?? reason.message) : reason);
+});
+process.on("uncaughtException", (err) => {
+  console.error("tickiti-mcp uncaughtException:", err instanceof Error ? (err.stack ?? err.message) : err);
+});
