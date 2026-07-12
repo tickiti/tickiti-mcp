@@ -145,7 +145,8 @@ export function registerTicketTools(server: McpServer): void {
         "You can change ticket attributes in the same call: status ('open' | 'on-hold' | " +
         "'closed'), on_hold_until (YYYY-MM-DD, required with 'on-hold'), assigned_to_email " +
         "(email or 'Unassigned'), priority (Low|Normal|High|Urgent or 10|20|30|40), resolved " +
-        "(resolution-category id or name), and add_participants / remove_participants. " +
+        "(resolution-category id or name), queue (move the ticket to a queue by name), subject " +
+        "(rename the ticket), and add_participants / remove_participants. " +
         "Omitting status auto-reopens a non-open ticket on post. content may be omitted ONLY " +
         "when supplying a status/attribute change; otherwise content is required. " +
         "To include inline images, pass `attachments` as local file paths and (optionally) " +
@@ -188,6 +189,14 @@ export function registerTicketTools(server: McpServer): void {
           .string()
           .optional()
           .describe("Resolution category (id or name); requires the resolution-tracking plan."),
+        queue: z
+          .string()
+          .optional()
+          .describe("Move the ticket to this queue (TicketQueue.name; must exist). Use list_queues for names."),
+        subject: z
+          .string()
+          .optional()
+          .describe("Rename the ticket to this subject."),
         add_participants: z
           .array(z.string().email())
           .optional()
@@ -223,7 +232,8 @@ export function registerTicketTools(server: McpServer): void {
       title: "Close (and optionally resolve) a ticket",
       description:
         "Close a ticket. Optionally pass content to post a final reply as it closes, and " +
-        "resolved (resolution-category id or name) to record the resolution. from_email is " +
+        "resolved (resolution-category id or name) to record the resolution, queue (move the " +
+        "ticket to a queue by name) and subject (rename). from_email is " +
         "optional — defaults to the token owner. Identify the ticket by ticket_number OR " +
         "ticket_id. Requires tickets:write.",
       inputSchema: {
@@ -233,6 +243,8 @@ export function registerTicketTools(server: McpServer): void {
         content: z.string().optional().describe("Optional closing reply body (HTML)"),
         is_internal: z.boolean().optional().describe("Post the closing note as staff-only (default public if content given)"),
         resolved: z.string().optional().describe("Resolution category id or name (resolution-tracking plan)"),
+        queue: z.string().optional().describe("Move the ticket to this queue (TicketQueue.name; must exist)."),
+        subject: z.string().optional().describe("Rename the ticket to this subject."),
       },
     },
     async (args) => toToolResult(await callV1("tickets/close", compact({ ...(args as Record<string, unknown>) }), { idempotent: true })),
