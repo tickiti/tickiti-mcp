@@ -67,7 +67,9 @@ export function registerTicketTools(server: McpServer): void {
       description:
         "Create a support ticket. Provide originator_email_address and EXACTLY ONE of: " +
         "subject+content, OR template_identifier+data, OR intervention+data+uid. " +
-        "Omit queue_name to use the Inbox; queue_name is not allowed with intervention.",
+        "Omit queue_name to use the Inbox; queue_name is not allowed with intervention. " +
+        "IMPORTANT: the opening response is PUBLIC (customer-visible) unless you pass " +
+        "is_public: false — pass it on any ticket meant to be an internal note.",
       inputSchema: {
         originator_email_address: z.string().email(),
         subject: z.string().optional().describe("Pair with content (subject+content path)"),
@@ -80,7 +82,7 @@ export function registerTicketTools(server: McpServer): void {
           .optional()
           .describe("Token values for template/intervention paths"),
         queue_name: z.string().optional().describe("TicketQueue.name; omit for Inbox"),
-        is_public: z.boolean().optional(),
+        is_public: z.boolean().optional().describe("Visibility of the opening response. Defaults to TRUE (customer-visible); pass false for a staff-only internal note."),
         use_passed_originator_as_responder: z.boolean().optional(),
         attachments: attachmentsShape,
         files: filesShape,
@@ -255,17 +257,21 @@ export function registerTicketTools(server: McpServer): void {
     {
       title: "Edit a response in place (no notification)",
       description:
-        "Rewrite an existing staff response's body. Sends NO notification — the correct way " +
-        "to silently fix content already on a ticket (e.g. swap a stale link) without emailing " +
-        "the customer. Staff responses only; customer and audit-only responses can't be edited. " +
-        "Get the response_id from get_ticket / list_responses. Requires tickets:write.",
+        "Rewrite an existing staff response's body and/or change whether it is internal. Sends " +
+        "NO notification — the correct way to silently fix content already on a ticket (e.g. swap " +
+        "a stale link) without emailing the customer. is_internal is also the only way to correct " +
+        "a response posted the wrong side of the public/internal line; note that demoting a public " +
+        "response does NOT unsend it, it only removes it from the ticket view. Supply content, " +
+        "is_internal, or both. Staff responses only; customer and audit-only responses can't be " +
+        "edited. Get the response_id from get_ticket / list_responses. Requires tickets:write.",
       inputSchema: {
         response_id: z.union([z.string(), z.number()]).describe("Response.id to rewrite"),
-        content: z.string().describe("New response body (HTML). Inline data: images are extracted to attachments."),
+        content: z.string().optional().describe("New response body (HTML). Inline data: images are extracted to attachments. Optional when is_internal is supplied."),
+        is_internal: z.boolean().optional().describe("Set the response's visibility: true = staff-only note, false = visible to the customer."),
       },
     },
-    async ({ response_id, content }) =>
-      toToolResult(await callV1("tickets/response-update", { response_id, content }, { idempotent: true })),
+    async ({ response_id, content, is_internal }) =>
+      toToolResult(await callV1("tickets/response-update", compact({ response_id, content, is_internal }), { idempotent: true })),
   );
 
   server.registerTool(
