@@ -4,7 +4,7 @@
   "title": "Tickiti",
   "description": "Connect AI assistants to the Tickiti helpdesk API: tickets, queries, reports and admin.",
   "version": "0.1.0",
-  "websiteUrl": "https://docs.tickiti.com/topic/mcp_server/",
+  "websiteUrl": "https://www.tickiti.com/docs/topic/mcp_server/",
   "repository": {
     "url": "https://github.com/tickiti/tickiti-mcp",
     "source": "github"

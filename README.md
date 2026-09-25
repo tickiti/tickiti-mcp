@@ -7,7 +7,7 @@ your bearer token and — for writes — an idempotency key. The token's abiliti
 security boundary: the server only relays calls, it never widens them, so a read-only token
 gives a read-only assistant.
 
-📖 Full documentation: <https://docs.tickiti.com/topic/mcp_server/>
+📖 Full documentation: <https://www.tickiti.com/docs/topic/mcp_server/>
 
 ## Tools
 

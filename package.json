@@ -5,7 +5,7 @@
   "license": "MIT",
   "type": "module",
   "repository": { "type": "git", "url": "git+https://github.com/tickiti/tickiti-mcp.git" },
-  "homepage": "https://docs.tickiti.com/topic/mcp_server/",
+  "homepage": "https://www.tickiti.com/docs/topic/mcp_server/",
   "bugs": { "url": "https://github.com/tickiti/tickiti-mcp/issues" },
   "bin": {
     "tickiti-mcp": "dist/server.js"
