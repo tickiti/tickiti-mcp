@@ -146,7 +146,8 @@ export function registerTicketTools(server: McpServer): void {
         "Add a response to an existing ticket. Set is_internal=true for a staff-only note. " +
         "You can change ticket attributes in the same call: status ('open' | 'on-hold' | " +
         "'closed'), on_hold_until (YYYY-MM-DD, required with 'on-hold'), assigned_to_email " +
-        "(email or 'Unassigned'), priority (Low|Normal|High|Urgent or 10|20|30|40), resolved " +
+        "(staff email, a team key 'team:<id>' from list_teams, or 'Unassigned'), priority " +
+        "(Low|Normal|High|Urgent or 10|20|30|40), resolved " +
         "(resolution-category id or name), queue (move the ticket to a queue by name), subject " +
         "(rename the ticket), and add_participants / remove_participants. " +
         "Omitting status auto-reopens a non-open ticket on post. content may be omitted ONLY " +
@@ -182,7 +183,10 @@ export function registerTicketTools(server: McpServer): void {
         assigned_to_email: z
           .string()
           .optional()
-          .describe("Reassign the ticket to this staff email, or 'Unassigned' to clear."),
+          .describe(
+            "Reassign the ticket to this staff email, to a team by its key 'team:<id>' (see " +
+              "list_teams; every member then counts as the assignee), or 'Unassigned' to clear.",
+          ),
         priority: z
           .string()
           .optional()
@@ -343,7 +347,10 @@ export function registerTicketTools(server: McpServer): void {
             "Search payload: { search_perspective?, search_perspective_id?, " +
               "criteria?: [{ mode, tokens: [...] }] }. Same-mode criteria OR together, " +
               "different modes AND. Valid modes: subject, content, subject_content, " +
-              "assigned (email), participant, priority, raised (originator email), queue " +
+              "assigned (a staff email — also matches that person's teams' tickets; a team " +
+              "key 'team:<id>' — the team's own tickets; 'team-and-members:<id>' — the " +
+              "team's and its members' own; or 'Unassigned'), participant, priority, raised " +
+              "(originator email), queue " +
               "(name), status, watchlist (id), hashtag, ticket_number, and the date " +
               "filters created_from / created_to / updated_from / updated_to " +
               "(tokens: ['YYYY-MM-DD'], compared as UTC). get_search_items returns the " +

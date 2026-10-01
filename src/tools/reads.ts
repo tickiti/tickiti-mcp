@@ -24,6 +24,19 @@ export function registerReadTools(server: McpServer): void {
   // via tickiti_call('workflow/queues', …) with a workflow token.
   simpleRead(server, "list_queues", "List ticket queues", "tickets/queues");
 
+  // ---- teams ----
+  // Same tickets-family reasoning: a ticket-scoped token needs the team keys that
+  // respond_to_ticket's assigned_to_email and query_tickets' "assigned" mode take.
+  // Team admin (create/rename/delete) is administration/teams via tickiti_call.
+  simpleRead(
+    server,
+    "list_teams",
+    "List teams: each team's name and members, its key 'team:<id>' (assign a ticket to the team, " +
+      "or filter on the team's own tickets) and members_key 'team-and-members:<id>' (filter only: " +
+      "the team's tickets plus those assigned to any member personally)",
+    "tickets/teams",
+  );
+
   server.registerTool(
     "list_workflow",
     {

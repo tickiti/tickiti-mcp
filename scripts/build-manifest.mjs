@@ -22,6 +22,13 @@ const OUT = join(HERE, "..", "src", "generated", "manifest.ts");
 // Idempotency-Key header (ApiController::create_ticket / ::ticket_respond).
 const IDEMPOTENT = new Set(["api.v1.tickets.create", "api.v1.tickets.respond"]);
 
+// Routes kept out of the manifest, so tickiti_call never offers them.
+// api.v1.axial.agent_task.request is for a running Axial agent task to ask staff
+// for approval, using the task's own token; any other token gets a 403, so an
+// assistant could never use it. (The Axial agent's callbacks live under
+// api/axial-agent, outside the api/v1 routes read here.)
+const EXCLUDED = new Set(["api.v1.axial.agent_task.request"]);
+
 function fetchRoutes() {
   const raw = execFileSync("php", ["artisan", "route:list", "--json", "--path=api/v1"], {
     cwd: TICKITI_DIR,
@@ -92,7 +99,7 @@ function toEntry(route) {
 
 function main() {
   const routes = fetchRoutes()
-    .filter((r) => typeof r.name === "string" && r.name.startsWith("api.v1."))
+    .filter((r) => typeof r.name === "string" && r.name.startsWith("api.v1.") && !EXCLUDED.has(r.name))
     .map(toEntry)
     .sort((a, b) => a.name.localeCompare(b.name));
 

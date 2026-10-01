@@ -22,7 +22,8 @@ general tools, so the whole surface is available without a separate tool per end
 | `list_perspectives` | `settings:read` | List saved perspectives |
 | `list_watchlists` | `settings:read` | List watchlists |
 | `list_stock_responses` | `settings:read` | List stock responses |
-| `list_queues` | `workflow:read` | List ticket queues |
+| `list_queues` | `tickets:read` | List ticket queues |
+| `list_teams` | `tickets:read` | List teams, their members and the `team:<id>` / `team-and-members:<id>` keys that assignment and the `assigned` search take |
 | `list_workflow` | `workflow:read` | List resolution categories, interventions or escalations |
 | `run_report` | `reports:read` | Run an analytics report |
 | `list_endpoints` | — | Discover every available API endpoint, with abilities and parameters |
