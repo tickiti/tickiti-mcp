@@ -7,6 +7,7 @@ import { registerTicketReadTools } from "./tools/ticket-reads.js";
 import { registerReadTools } from "./tools/reads.js";
 import { registerSettingsWriteTools } from "./tools/settings-writes.js";
 import { registerGenericTools } from "./tools/generic.js";
+import { registerAxialSkillTools } from "./tools/axial-skills.js";
 
 /**
  * tickiti-mcp — a thin MCP shim over the Tickiti Public API v1.
@@ -31,13 +32,14 @@ async function main(): Promise<void> {
   registerTicketReadTools(server);
   registerReadTools(server);
   registerSettingsWriteTools(server);
+  registerAxialSkillTools(server);
   registerGenericTools(server);
 
   const transport = new StdioServerTransport();
   await server.connect(transport);
 
   // stdio servers must not write to stdout (it's the JSON-RPC channel).
-  console.error("tickiti-mcp ready (stdio) — tickets + ticket-reads + reads + settings-writes + generic registered.");
+  console.error("tickiti-mcp ready (stdio) — tickets + ticket-reads + reads + settings-writes + axial-skills + generic registered.");
 }
 
 main().catch((err) => {
