@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { basename } from "node:path";
@@ -7,24 +8,99 @@ import { basename } from "node:path";
  *  - base URL + bearer auth (token abilities are the real security boundary)
  *  - idempotency-key injection for write calls
  *  - error normalisation, so a tool always gets a predictable shape back
+ *  - which Tickiti instance a call goes to
  *
  * Config is read once at startup so a missing token fails fast and loud
  * rather than on the first tool call.
+ *
+ * Instances: TICKITI_API_BASE + TICKITI_API_TOKEN name the default one (called
+ * TICKITI_INSTANCE_NAME, or "default"). More can be added with TICKITI_INSTANCES -
+ * JSON, or a path to a JSON file - mapping a name to { base, token }. Every tool then
+ * takes an optional `instance`, so production and staging can be used in one session
+ * without reconnecting the server (the server used to be bound to one instance at
+ * spawn time).
  */
 
-const BASE = (process.env.TICKITI_API_BASE ?? "").replace(/\/+$/, "");
-const TOKEN = process.env.TICKITI_API_TOKEN ?? "";
+export interface Instance {
+  name: string;
+  base: string;
+  token: string;
+}
+
 const TIMEOUT_MS = Number(process.env.TICKITI_API_TIMEOUT_MS ?? 30000);
 
+function loadInstances(): Instance[] {
+  const out: Instance[] = [];
+  const base = (process.env.TICKITI_API_BASE ?? "").replace(/\/+$/, "");
+  const token = process.env.TICKITI_API_TOKEN ?? "";
+  if (base || token) {
+    out.push({ name: process.env.TICKITI_INSTANCE_NAME || "default", base, token });
+  }
+
+  const raw = (process.env.TICKITI_INSTANCES ?? "").trim();
+  if (raw) {
+    let text = raw;
+    if (!raw.startsWith("{")) {
+      try {
+        text = readFileSync(raw, "utf8");
+      } catch (e) {
+        throw new Error(`TICKITI_INSTANCES: cannot read ${raw}: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
+    let parsed: Record<string, { base?: string; token?: string }>;
+    try {
+      parsed = JSON.parse(text);
+    } catch (e) {
+      throw new Error(`TICKITI_INSTANCES is not valid JSON: ${e instanceof Error ? e.message : String(e)}`);
+    }
+    for (const [name, v] of Object.entries(parsed)) {
+      if (out.some((i) => i.name === name)) continue;
+      out.push({ name, base: String(v?.base ?? "").replace(/\/+$/, ""), token: String(v?.token ?? "") });
+    }
+  }
+  return out;
+}
+
+const INSTANCES = loadInstances();
+const context = new AsyncLocalStorage<string>();
+
+/** Names of the configured instances (no tokens). */
+export function instanceList(): { name: string; base: string; default: boolean }[] {
+  return INSTANCES.map((i, n) => ({ name: i.name, base: i.base, default: n === 0 }));
+}
+
+export function hasMultipleInstances(): boolean {
+  return INSTANCES.length > 1;
+}
+
+/** Run fn with every call inside it going to the named instance (undefined = default). */
+export function withInstance<T>(name: string | undefined, fn: () => Promise<T>): Promise<T> {
+  if (name !== undefined && !INSTANCES.some((i) => i.name === name)) {
+    const known = INSTANCES.map((i) => i.name).join(", ");
+    return Promise.reject(new Error(`Unknown instance '${name}'. Configured: ${known}.`));
+  }
+  return name === undefined ? fn() : context.run(name, fn);
+}
+
+function current(): Instance {
+  const name = context.getStore();
+  return (name !== undefined ? INSTANCES.find((i) => i.name === name) : undefined) ?? INSTANCES[0];
+}
+
 export function assertConfig(): void {
-  const missing: string[] = [];
-  if (!BASE) missing.push("TICKITI_API_BASE");
-  if (!TOKEN) missing.push("TICKITI_API_TOKEN");
-  if (missing.length) {
+  if (!INSTANCES.length) {
     throw new Error(
-      `Missing required env var(s): ${missing.join(", ")}. ` +
-        `Copy .env.example and fill them in.`,
+      "Missing required env var(s): TICKITI_API_BASE, TICKITI_API_TOKEN (or TICKITI_INSTANCES). " +
+        "Copy .env.example and fill them in.",
     );
+  }
+  for (const i of INSTANCES) {
+    const missing: string[] = [];
+    if (!i.base) missing.push("base");
+    if (!i.token) missing.push("token");
+    if (missing.length) {
+      throw new Error(`Instance '${i.name}' is missing its ${missing.join(" and ")}.`);
+    }
   }
 }
 
@@ -51,12 +127,13 @@ export async function callV1(
   body: Record<string, unknown> = {},
   opts: CallOptions = {},
 ): Promise<ApiResult> {
-  const url = `${BASE}/api/v1/${path.replace(/^\/+/, "")}`;
+  const { base, token } = current();
+  const url = `${base}/api/v1/${path.replace(/^\/+/, "")}`;
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     Accept: "application/json",
-    Authorization: `Bearer ${TOKEN}`,
+    Authorization: `Bearer ${token}`,
   };
   if (opts.idempotent) headers["Idempotency-Key"] = randomUUID();
 
@@ -111,8 +188,11 @@ export async function callV1(
 export async function uploadFileV1(
   filePath: string,
   name?: string,
+  path = "tickets/attachment-upload",
+  fields: Record<string, string> = {},
 ): Promise<ApiResult> {
-  const url = `${BASE}/api/v1/tickets/attachment-upload`;
+  const { base, token } = current();
+  const url = `${base}/api/v1/${path}`;
 
   let bytes: Buffer;
   try {
@@ -131,6 +211,7 @@ export async function uploadFileV1(
   // Wrap in a fresh Uint8Array so the Blob part is ArrayBuffer-backed (a raw
   // Node Buffer's ArrayBufferLike doesn't satisfy the BlobPart DOM type).
   form.append("file", new Blob([new Uint8Array(bytes)]), fileName);
+  for (const [k, v] of Object.entries(fields)) form.append(k, v);
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
@@ -140,7 +221,7 @@ export async function uploadFileV1(
     res = await fetch(url, {
       method: "POST",
       // No Content-Type — fetch sets the multipart boundary itself.
-      headers: { Accept: "application/json", Authorization: `Bearer ${TOKEN}` },
+      headers: { Accept: "application/json", Authorization: `Bearer ${token}` },
       body: form,
       signal: controller.signal,
     });
@@ -183,6 +264,8 @@ function summariseError(status: number, body: unknown): string {
         ? "Forbidden — the token lacks the required ability/role/plan for this endpoint."
         : status === 422
           ? "Validation failed."
+          : status === 413
+            ? "Too large."
           : status === 404
             ? "Not found."
             : `HTTP ${status}.`;

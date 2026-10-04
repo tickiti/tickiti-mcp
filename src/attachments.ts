@@ -30,6 +30,30 @@ const IMAGE_MIME: Record<string, string> = {
 
 export const SUPPORTED_IMAGE_EXTS = Object.keys(IMAGE_MIME);
 
+/**
+ * Read a body from a local file (content_path). A forwarded mail's body can be
+ * 160 KB of Outlook HTML; having the model emit it verbatim to change one link was
+ * slow and corruption-prone - the same reason files go by path, never as base64.
+ */
+export function readContentFile(path: string): string {
+  try {
+    return readFileSync(path, "utf8");
+  } catch (e) {
+    throw new Error(`Cannot read content_path ${path}: ${e instanceof Error ? e.message : String(e)}`);
+  }
+}
+
+/** content, or the file named by content_path; both given is an error. */
+export function resolveContent(content: unknown, contentPath: unknown): string | undefined {
+  if (contentPath !== undefined && contentPath !== null && contentPath !== "") {
+    if (content !== undefined && content !== null && content !== "") {
+      throw new Error("Give content or content_path, not both.");
+    }
+    return readContentFile(String(contentPath));
+  }
+  return content === undefined || content === null ? undefined : String(content);
+}
+
 export interface InlineAttachment {
   /** Path to the image file on the machine running the MCP. */
   path: string;

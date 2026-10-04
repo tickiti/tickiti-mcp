@@ -17,13 +17,16 @@ The canned-content read/search gap below is largely closed:
 - **Template edit** — `update_template` (wraps the nested `template:{id,...}` shape the
   API's `templates/update` expects), `get_template`.
 
+## Resolved 2026-10-04 (0.2.0)
+
+- **`stock-responses` index** now takes `search` and `include_content`
+  (`list_stock_responses`).
+- Everything in the tickiti-api skill's "Known MCP issues" list that had a code fix: see the
+  0.2.0 commit for the tool-by-tool list.
+
 ## Still open (low priority)
 
-- **`stock-responses` index returns metadata only** and ignores a `search` filter. Body
-  reads go through `get_stock_response`, and content search through `search_templates`, so
-  this is a nice-to-have: a server-side `search` / `include_content` option on
-  `TemplateController::stock_responses` (select `content`, honour a keyword filter) would
-  let `list_stock_responses` search+return bodies directly.
+- `tests/all-paths.mjs` does not yet exercise the endpoints added in 0.2.0.
 
 _Original note (2026-06-10): logged while searching for stock responses referencing
 `monitorsetupmetrics.sort` — SR 336 "Touch/Monitor association - Full". The list tools

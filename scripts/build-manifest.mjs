@@ -18,9 +18,18 @@ const TICKITI_DIR = process.env.TICKITI_DIR ?? "e:/devl/tickiti";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const OUT = join(HERE, "..", "src", "generated", "manifest.ts");
 
-// Idempotent writes: the two endpoints whose controllers require an
-// Idempotency-Key header (ApiController::create_ticket / ::ticket_respond).
-const IDEMPOTENT = new Set(["api.v1.tickets.create", "api.v1.tickets.respond"]);
+// Endpoints whose controllers REQUIRE an Idempotency-Key header: create_ticket and
+// ticket_respond, plus close and the participant changes (both go through
+// ticket_respond) and mail/send (send_email). Without the key tickiti_call got a 422
+// on close/participants even though the typed tools worked.
+const IDEMPOTENT = new Set([
+  "api.v1.tickets.create",
+  "api.v1.tickets.respond",
+  "api.v1.tickets.close",
+  "api.v1.tickets.participants_add",
+  "api.v1.tickets.participants_remove",
+  "api.v1.mail.send",
+]);
 
 // Routes kept out of the manifest, so tickiti_call never offers them.
 // api.v1.axial.agent_task.request is for a running Axial agent task to ask staff

@@ -1,13 +1,51 @@
 #!/usr/bin/env node
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { assertConfig } from "./client.js";
+import { z } from "zod";
+import { assertConfig, hasMultipleInstances, instanceList, withInstance } from "./client.js";
 import { registerTicketTools } from "./tools/tickets.js";
 import { registerTicketReadTools } from "./tools/ticket-reads.js";
 import { registerReadTools } from "./tools/reads.js";
 import { registerSettingsWriteTools } from "./tools/settings-writes.js";
 import { registerGenericTools } from "./tools/generic.js";
 import { registerAxialSkillTools } from "./tools/axial-skills.js";
+import { registerTicketOperationTools } from "./tools/ticket-operations.js";
+import { registerAdminTools } from "./tools/admin.js";
+
+export const VERSION = "0.2.0";
+
+/**
+ * With more than one instance configured, give every tool an optional `instance`
+ * argument and run its calls against that instance. Done once here rather than in
+ * each tool, so no tool can miss it.
+ */
+function addInstanceArgument(server: McpServer): void {
+  if (!hasMultipleInstances()) return;
+  const names = instanceList().map((i) => i.name);
+  const register = server.registerTool.bind(server) as (...a: unknown[]) => unknown;
+  (server as unknown as { registerTool: unknown }).registerTool = (
+    name: string,
+    config: { inputSchema?: Record<string, unknown> } & Record<string, unknown>,
+    handler: (args: Record<string, unknown>, extra: unknown) => Promise<unknown>,
+  ) =>
+    register(
+      name,
+      {
+        ...config,
+        inputSchema: {
+          ...(config.inputSchema ?? {}),
+          instance: z
+            .enum(names as [string, ...string[]])
+            .optional()
+            .describe(`Tickiti instance to call (default: ${names[0]}). See list_instances.`),
+        },
+      },
+      async (args: Record<string, unknown>, extra: unknown) => {
+        const { instance, ...rest } = args ?? {};
+        return withInstance(instance as string | undefined, () => handler(rest, extra));
+      },
+    );
+}
 
 /**
  * tickiti-mcp — a thin MCP shim over the Tickiti Public API v1.
@@ -25,13 +63,17 @@ async function main(): Promise<void> {
 
   const server = new McpServer({
     name: "tickiti-mcp",
-    version: "0.1.0",
+    version: VERSION,
   });
+
+  addInstanceArgument(server);
 
   registerTicketTools(server);
   registerTicketReadTools(server);
+  registerTicketOperationTools(server);
   registerReadTools(server);
   registerSettingsWriteTools(server);
+  registerAdminTools(server);
   registerAxialSkillTools(server);
   registerGenericTools(server);
 
@@ -39,7 +81,9 @@ async function main(): Promise<void> {
   await server.connect(transport);
 
   // stdio servers must not write to stdout (it's the JSON-RPC channel).
-  console.error("tickiti-mcp ready (stdio) — tickets + ticket-reads + reads + settings-writes + axial-skills + generic registered.");
+  console.error(
+    `tickiti-mcp ${VERSION} ready (stdio) — instances: ${instanceList().map((i) => i.name).join(", ")}.`,
+  );
 }
 
 main().catch((err) => {

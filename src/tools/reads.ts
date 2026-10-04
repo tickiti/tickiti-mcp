@@ -13,9 +13,39 @@ import { toToolResult } from "../result.js";
  */
 export function registerReadTools(server: McpServer): void {
   // ---- settings ----
-  simpleRead(server, "list_perspectives", "List saved perspectives (views)", "settings/perspectives");
+  server.registerTool(
+    "list_perspectives",
+    {
+      title: "List perspectives (saved views)",
+      description:
+        "scope 'mine' (default): the perspectives on the token owner's own index page - empty for an " +
+        "account that never opened the UI, which does NOT mean there are none. scope 'all': every " +
+        "perspective the owner may see, built-ins included, with conditions and sort orders. Requires settings:read.",
+      inputSchema: { scope: z.enum(["mine", "all"]).optional() },
+    },
+    async ({ scope }) => toToolResult(await callV1("settings/perspectives", scope ? { scope } : {})),
+  );
   simpleRead(server, "list_watchlists", "List watchlists", "settings/watchlists");
-  simpleRead(server, "list_stock_responses", "List stock (canned) responses", "settings/stock-responses");
+  server.registerTool(
+    "list_stock_responses",
+    {
+      title: "List stock (canned) responses",
+      description:
+        "List stock responses (id, title, category, keywords, use count). search filters by title, keywords, " +
+        "subject or body; include_content adds each body, is_enabled and ai_relevance. Requires settings:read.",
+      inputSchema: {
+        search: z.string().optional(),
+        include_content: z.boolean().optional(),
+      },
+    },
+    async (args) =>
+      toToolResult(
+        await callV1(
+          "settings/stock-responses",
+          Object.fromEntries(Object.entries(args as Record<string, unknown>).filter(([, v]) => v !== undefined)),
+        ),
+      ),
+  );
 
   // ---- queues ----
   // Uses the tickets-family endpoint (tickets:read) so a ticket-scoped token can

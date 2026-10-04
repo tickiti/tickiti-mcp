@@ -4,11 +4,21 @@ import { callV1 } from "../client.js";
 import { toToolResult } from "../result.js";
 import {
   inlineImagesIntoContent,
+  resolveContent,
   uploadOutOfLineFiles,
   SUPPORTED_IMAGE_EXTS,
   type InlineAttachment,
   type OutOfLineFile,
 } from "../attachments.js";
+
+/** Shared Zod field: a body read from a local file instead of passed inline. */
+const contentPathShape = z
+  .string()
+  .optional()
+  .describe(
+    "Path to a local file holding the HTML body, instead of `content` (give one). Use it for long bodies - " +
+      "the shim reads the file, so the text never has to be emitted verbatim.",
+  );
 
 /** Strip undefined keys so the API call body only carries supplied fields. */
 function compact(obj: Record<string, unknown>): Record<string, unknown> {
@@ -68,12 +78,15 @@ export function registerTicketTools(server: McpServer): void {
         "Create a support ticket. Provide originator_email_address and EXACTLY ONE of: " +
         "subject+content, OR template_identifier+data, OR intervention+data+uid. " +
         "Omit queue_name to use the Inbox; queue_name is not allowed with intervention. " +
-        "IMPORTANT: the opening response is PUBLIC (customer-visible) unless you pass " +
-        "is_public: false — pass it on any ticket meant to be an internal note.",
+        "is_public is REQUIRED: true = the opening response is customer-visible, false = a staff-only internal note. " +
+        "You can set the assignee, priority, status and extra participants at creation. " +
+        "The result's `queue` is where the ticket actually landed (with rerouted/reroute_reason if a routing rule moved it), " +
+        "and tag_warnings lists any @tag that matched nobody (posted as plain text; pass strict_tags to refuse instead).",
       inputSchema: {
         originator_email_address: z.string().email(),
         subject: z.string().optional().describe("Pair with content (subject+content path)"),
         content: z.string().optional().describe("HTML body; pair with subject"),
+        content_path: contentPathShape,
         template_identifier: z.string().optional().describe("Template.identifier; pair with data"),
         intervention: z.string().optional().describe("Intervention.name; pair with data and uid"),
         uid: z.string().optional().describe("Required only when intervention is set"),
@@ -82,8 +95,16 @@ export function registerTicketTools(server: McpServer): void {
           .optional()
           .describe("Token values for template/intervention paths"),
         queue_name: z.string().optional().describe("TicketQueue.name; omit for Inbox"),
-        is_public: z.boolean().optional().describe("Visibility of the opening response. Defaults to TRUE (customer-visible); pass false for a staff-only internal note."),
-        use_passed_originator_as_responder: z.boolean().optional(),
+        is_public: z
+          .boolean()
+          .describe("Visibility of the opening response: true = customer-visible, false = staff-only internal note. Required - there is no safe default."),
+        use_passed_originator_as_responder: z.boolean().optional().describe("Post the opening response as the originator rather than the token owner."),
+        assigned_to_email: z.string().optional().describe("Assign at creation: a staff email or a team key 'team:<id>' (list_teams / list_staff)."),
+        priority: z.enum(["10", "20", "30", "40", "Low", "Normal", "High", "Urgent"]).optional().describe("Priority at creation."),
+        status: z.enum(["open", "on-hold", "closed"]).optional().describe("Status at creation (default open)."),
+        on_hold_until: z.string().optional().describe("YYYY-MM-DD; required with status on-hold."),
+        participants: z.array(z.string().email()).optional().describe("Extra participants added as the ticket is created (list_staff gives staff addresses)."),
+        strict_tags: z.boolean().optional().describe("Refuse the create if an @tag or #hashtag matches nobody (default: post it as text and report it in tag_warnings)."),
         attachments: attachmentsShape,
         files: filesShape,
       },
@@ -104,14 +125,22 @@ export function registerTicketTools(server: McpServer): void {
 
       const data: Record<string, unknown> = { ...((a.data as Record<string, unknown>) ?? {}) };
       if (a.subject !== undefined) data.subject = a.subject;
-      if (a.content !== undefined) data.content = a.content;
+      const content = resolveContent(a.content, a.content_path);
+      if (content !== undefined) data.content = content;
+      const PRIORITY: Record<string, string> = { Low: "10", Normal: "20", High: "30", Urgent: "40" };
+      if (a.assigned_to_email !== undefined) data.assigned_to_email = a.assigned_to_email;
+      if (a.priority !== undefined) data.priority = PRIORITY[String(a.priority)] ?? a.priority;
+      if (a.status !== undefined) data.status = a.status;
+      if (a.on_hold_until !== undefined) data.on_hold_until = a.on_hold_until;
+      if (a.participants !== undefined) body.participants = a.participants;
+      if (a.strict_tags !== undefined) body.strict_tags = a.strict_tags;
 
       // Inline images: embed the local files as data-URIs in the body. The
       // server (create_ticket → TicketActionService) converts them to cid:
       // attachments, exactly like respond_to_ticket.
       if (Array.isArray(a.attachments) && a.attachments.length) {
         data.content = inlineImagesIntoContent(
-          String((a.content as string | undefined) ?? data.content ?? ""),
+          String(data.content ?? ""),
           a.attachments as InlineAttachment[],
         );
       }
@@ -128,8 +157,7 @@ export function registerTicketTools(server: McpServer): void {
       if (a.uid !== undefined) body.uid = a.uid;
 
       if (a.queue_name !== undefined) {
-        body.queue_name = a.queue_name; // used for resolution
-        data.queue_name = a.queue_name; // validated for existence
+        body.queue_name = a.queue_name; // the server now takes it top-level alone
       }
 
       if (Object.keys(data).length) body.data = data;
@@ -150,8 +178,12 @@ export function registerTicketTools(server: McpServer): void {
         "(Low|Normal|High|Urgent or 10|20|30|40), resolved " +
         "(resolution-category id or name), queue (move the ticket to a queue by name), subject " +
         "(rename the ticket), and add_participants / remove_participants. " +
-        "Omitting status auto-reopens a non-open ticket on post. content may be omitted ONLY " +
-        "when supplying a status/attribute change; otherwise content is required. " +
+        "With no status given, a PUBLIC reply reopens a closed/on-hold ticket (keep_status: true stops it); an " +
+        "internal note or an attribute-only change leaves the status and any hold date alone. on_hold_until on its own " +
+        "puts the ticket on hold. content may be omitted ONLY when supplying a status/attribute change. The body " +
+        "parameter is `content` (a body sent as html/body/message is refused); any other unknown parameter is listed " +
+        "in the result's ignored_params. send_full_email: true emails the customer the reply itself, not just the " +
+        "'open the ticket' notification. Closing on a queue that tracks resolutions needs `resolved` (list_resolutions). " +
         "To include inline images, pass `attachments` as local file paths and (optionally) " +
         "place {{attach:<name>}} tokens in `content` where each image should appear. " +
         "To attach downloadable files of any type, pass `files` as local file paths. " +
@@ -171,7 +203,16 @@ export function registerTicketTools(server: McpServer): void {
           .string()
           .optional()
           .describe("Response body (HTML). Optional only when a status/attribute change is supplied."),
+        content_path: contentPathShape,
         is_internal: z.boolean().optional(),
+        send_full_email: z
+          .boolean()
+          .optional()
+          .describe("Email the customer the reply itself (full thread email) rather than the short notification - for customers whose mail app can't open the ticket page."),
+        keep_status: z
+          .boolean()
+          .optional()
+          .describe("Leave the ticket's status as it is even for a public reply (no auto-reopen)."),
         status: z
           .enum(["open", "on-hold", "closed"])
           .optional()
@@ -179,7 +220,7 @@ export function registerTicketTools(server: McpServer): void {
         on_hold_until: z
           .string()
           .optional()
-          .describe("Date (YYYY-MM-DD) to hold until; required when status='on-hold'."),
+          .describe("Date (YYYY-MM-DD) to hold until. On its own it puts the ticket on hold."),
         assigned_to_email: z
           .string()
           .optional()
@@ -216,11 +257,13 @@ export function registerTicketTools(server: McpServer): void {
       },
     },
     async (args) => {
-      const { attachments, files, ...rest } = args as Record<string, unknown>;
+      const { attachments, files, content_path, ...rest } = args as Record<string, unknown>;
       const body: Record<string, unknown> = { ...rest };
+      const content = resolveContent(rest.content, content_path);
+      if (content !== undefined) body.content = content;
       if (Array.isArray(attachments) && attachments.length) {
         body.content = inlineImagesIntoContent(
-          String(rest.content ?? ""),
+          String(body.content ?? ""),
           attachments as InlineAttachment[],
         );
       }
@@ -239,7 +282,8 @@ export function registerTicketTools(server: McpServer): void {
       description:
         "Close a ticket. Optionally pass content to post a final reply as it closes, and " +
         "resolved (resolution-category id or name) to record the resolution, queue (move the " +
-        "ticket to a queue by name) and subject (rename). from_email is " +
+        "ticket to a queue by name) and subject (rename). On a queue that tracks resolutions, " +
+        "`resolved` is required (list_resolutions gives the categories). from_email is " +
         "optional — defaults to the token owner. Identify the ticket by ticket_number OR " +
         "ticket_id. Requires tickets:write.",
       inputSchema: {
@@ -261,21 +305,41 @@ export function registerTicketTools(server: McpServer): void {
     {
       title: "Edit a response in place (no notification)",
       description:
-        "Rewrite an existing staff response's body and/or change whether it is internal. Sends " +
-        "NO notification — the correct way to silently fix content already on a ticket (e.g. swap " +
-        "a stale link) without emailing the customer. is_internal is also the only way to correct " +
-        "a response posted the wrong side of the public/internal line; note that demoting a public " +
-        "response does NOT unsend it, it only removes it from the ticket view. Supply content, " +
-        "is_internal, or both. Staff responses only; customer and audit-only responses can't be " +
-        "edited. Get the response_id from get_ticket / list_responses. Requires tickets:write.",
+        "Change an existing response in place: replace its body (content / content_path), edit " +
+        "part of it (replace: find/replace pairs against the stored body - no need to send the " +
+        "whole thing back), and/or change whether it is internal. Sends NO notification - the " +
+        "way to silently fix content already on a ticket - unless notify: true with is_internal: " +
+        "false, which publishes an internal note and tells the customer (the ticket page's 'Change " +
+        "to public'). Demoting a public response does NOT unsend it. A customer's response can " +
+        "have its visibility corrected (is_internal alone) but its body is never rewritten; " +
+        "audit-only rows have no body. Get the response_id from get_ticket / get_response. " +
+        "Requires tickets:write.",
       inputSchema: {
-        response_id: z.union([z.string(), z.number()]).describe("Response.id to rewrite"),
-        content: z.string().optional().describe("New response body (HTML). Inline data: images are extracted to attachments. Optional when is_internal is supplied."),
+        response_id: z.union([z.string(), z.number()]).describe("Response.id to change"),
+        content: z.string().optional().describe("New response body (HTML). Inline data: images are extracted to attachments."),
+        content_path: contentPathShape,
+        replace: z
+          .array(
+            z.object({
+              find: z.string().min(1).describe("Exact text (HTML) in the stored body"),
+              replace: z.string().describe("Replacement ('' to delete)"),
+              all: z.boolean().optional().describe("Replace every occurrence (else it must occur exactly once)"),
+            }),
+          )
+          .optional()
+          .describe("Edits to the stored body, applied in order. Exclusive with content."),
         is_internal: z.boolean().optional().describe("Set the response's visibility: true = staff-only note, false = visible to the customer."),
+        notify: z.boolean().optional().describe("With is_internal: false on an internal response: publish it AND notify the customer."),
       },
     },
-    async ({ response_id, content, is_internal }) =>
-      toToolResult(await callV1("tickets/response-update", compact({ response_id, content, is_internal }), { idempotent: true })),
+    async ({ response_id, content, content_path, replace, is_internal, notify }) =>
+      toToolResult(
+        await callV1(
+          "tickets/response-update",
+          compact({ response_id, content: resolveContent(content, content_path), replace, is_internal, notify }),
+          { idempotent: true },
+        ),
+      ),
   );
 
   server.registerTool(
@@ -335,18 +399,21 @@ export function registerTicketTools(server: McpServer): void {
       title: "Query tickets",
       description:
         "List tickets for a perspective (saved view). Specify perspective_id or " +
-        "perspective_name; defaults to the 'All' perspective. Pass a ticket number " +
-        "via search_object for a direct lookup.",
+        "perspective_name; defaults to the 'All' perspective. Pass ticket numbers " +
+        "via search_object for a direct lookup (several numbers in one ticket_number criterion " +
+        "return those tickets). An unknown mode is refused. get_search_modes lists the vocabulary.",
       inputSchema: {
         perspective_id: z.number().int().optional(),
+        row_limit: z.number().int().min(1).max(5000).optional().describe("Rows to return (default 100)."),
         perspective_name: z.string().optional().describe("Resolved server-side via search_object.search_perspective"),
         search_object: z
           .record(z.any())
           .optional()
           .describe(
             "Search payload: { search_perspective?, search_perspective_id?, " +
-              "criteria?: [{ mode, tokens: [...] }] }. Same-mode criteria OR together, " +
-              "different modes AND. Valid modes: subject, content, subject_content, " +
+              "criteria?: [{ mode, tokens: [...], match?: 'all'|'any' }] }. Same-mode criteria OR together, " +
+              "different modes AND. Several tokens in one text criterion must ALL match unless match: 'any'; " +
+              "the single-value modes (ticket_number, queue, status, assigned, ...) match any token. Valid modes: subject, content, subject_content, " +
               "assigned (a staff email — also matches that person's teams' tickets; a team " +
               "key 'team:<id>' — the team's own tickets; 'team-and-members:<id>' — the " +
               "team's and its members' own; or 'Unassigned'), participant, priority, raised " +

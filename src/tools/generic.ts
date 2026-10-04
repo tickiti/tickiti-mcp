@@ -3,6 +3,7 @@ import { z } from "zod";
 import { callV1 } from "../client.js";
 import { toToolResult } from "../result.js";
 import { FAMILIES, MANIFEST, actionsFor, buildPath, findRoute } from "../manifest.js";
+import { PARAM_HINTS } from "../param-hints.js";
 
 /**
  * Completeness layer over the named tools:
@@ -24,7 +25,7 @@ export function registerGenericTools(server: McpServer): void {
       description:
         "Discover available Tickiti v1 endpoints. Optionally filter by family " +
         `(one of: ${FAMILIES.join(", ")}). Returns each endpoint's action key, ` +
-        "required abilities, role, plan gates and path params — use these with tickiti_call.",
+        "required abilities, role, plan gates, path params and (where known) body params — use these with tickiti_call.",
       inputSchema: {
         family: z.string().optional().describe(`Filter to one family: ${FAMILIES.join(", ")}`),
       },
@@ -39,6 +40,7 @@ export function registerGenericTools(server: McpServer): void {
         sysadmin: e.sysadmin || undefined,
         plans: e.plans.length ? e.plans : undefined,
         params: e.params.length ? e.params : undefined,
+        body: PARAM_HINTS[e.name],
         idempotent: e.idempotent || undefined,
       }));
       return {
