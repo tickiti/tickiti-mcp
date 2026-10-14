@@ -57,7 +57,7 @@ export function registerSettingsWriteTools(server: McpServer): void {
         content: z.string().optional().describe("Body (Quill HTML)"),
         is_enabled: z.boolean().optional().describe("Show in the composer picker (default true)"),
         notes: z.string().optional().describe("Internal staff notes"),
-        ai_relevance: z.enum(["as_is", "compose", "reference", "exclude"]).optional().describe("Admin-only"),
+        ai_relevance: z.enum(["as_is", "compose", "reference", "exclude"]).optional().describe("How the AI assistant (Axial) may use it: as_is = sent whole as a complete reply; compose = an approved passage Axial builds replies from; reference = background only, never cited; exclude = not used. A stock response made for Axial is compose (or as_is when it is a whole reply). Default reference."),
       },
     },
     async (args) =>
@@ -70,8 +70,8 @@ export function registerSettingsWriteTools(server: McpServer): void {
       title: "Update a stock response",
       description:
         "Edit an existing stock response by id. Only the fields you pass are changed. content " +
-        "is Quill HTML. ai_relevance (as_is|compose|reference|exclude) governs the AI assistant and is " +
-        "admin-only. Fields are limited to 255 characters (content excepted). Requires settings:write.",
+        "is Quill HTML. ai_relevance (as_is|compose|reference|exclude) governs how the AI assistant (Axial) " +
+        "uses it. Fields are limited to 255 characters (content excepted). Requires settings:write.",
       inputSchema: {
         id: z.union([z.string(), z.number()]).describe("Template.id of the stock response"),
         identifier: z.string().optional().describe("Topic / title"),
@@ -82,7 +82,7 @@ export function registerSettingsWriteTools(server: McpServer): void {
         content: z.string().optional().describe("Body (Quill HTML)"),
         is_enabled: z.boolean().optional().describe("Show in the composer picker"),
         notes: z.string().optional().describe("Internal staff notes"),
-        ai_relevance: z.enum(["as_is", "compose", "reference", "exclude"]).optional().describe("Admin-only"),
+        ai_relevance: z.enum(["as_is", "compose", "reference", "exclude"]).optional().describe("How the AI assistant (Axial) may use it: as_is = sent whole as a complete reply; compose = an approved passage Axial builds replies from; reference = background only, never cited; exclude = not used. A stock response made for Axial is compose (or as_is when it is a whole reply). Default reference."),
       },
     },
     async ({ id, ...fields }) =>
