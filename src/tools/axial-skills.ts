@@ -161,3 +161,88 @@ export function registerAxialSkillTools(server: McpServer): void {
     async ({ skill, name }) => toToolResult(await callV1("axial/skills/actions/delete", { skill, name })),
   );
 }
+
+/**
+ * Axial's suggested response on a ticket. For an Axial agent task (the enclave staff
+ * conversation): its own token is the only one this works with, and the revision is made
+ * by Axial's own engine as the staff member the task works for (#430587).
+ */
+export function registerAxialSuggestionTools(server: McpServer): void {
+  server.registerTool(
+    "revise_suggestion",
+    {
+      title: "Revise Axial's suggested response",
+      description:
+        "Ask Axial to change its suggested response to the customer on the ticket this agent task is about, " +
+        "as staff would in the Axial panel. Axial writes the new version itself, under its own rules (approved " +
+        "stock responses, guards), and it appears in the panel as a new version. Use it whenever the staff member " +
+        "asks for the draft, reply or suggestion to change; never write the customer reply yourself instead. " +
+        "Only an Axial agent task's own token can call it; it is refused while Axial is already working on the ticket.",
+      inputSchema: {
+        change: z.string().describe("The change wanted, in the staff member's terms (e.g. 'say there is no OEM licence option for this monitor')"),
+        summary: z.string().optional().describe("A few words for the version's label"),
+      },
+    },
+    async ({ change, summary }) =>
+      toToolResult(await callV1("axial/agent-task/revise-suggestion", compact({ change, summary }))),
+  );
+
+  server.registerTool(
+    "get_suggestion",
+    {
+      title: "Read Axial's suggested response",
+      description:
+        "Read Axial's suggested response to the customer on the ticket this agent task is about: the latest version " +
+        "(or one by number), as plain text and HTML, with its one-off sign-off if it has one and whether it was sent. " +
+        "Embedded images come back as [embedded image]; sending the version sends them. " +
+        "Only an Axial agent task's own token can call it.",
+      inputSchema: {
+        version: z.number().int().optional().describe("A version number as the panel shows it (v3 = 3); the latest when left out"),
+      },
+    },
+    async ({ version }) => toToolResult(await callV1("axial/agent-task/suggestion", compact({ version }))),
+  );
+
+  server.registerTool(
+    "set_suggestion_signature",
+    {
+      title: "Sign off Axial's suggested response",
+      description:
+        "Give the latest version of Axial's suggested response a one-off sign-off, used instead of the usual one when it " +
+        "is inserted into the reply editor or sent - for that version only. Use it when the staff member asks for the reply " +
+        "to be signed off differently. Pass the whole sign-off as it should appear, one line per line (e.g. \"Regards,\nClaude\"); " +
+        "pass an empty signature to remove it. Only an Axial agent task's own token can call it.",
+      inputSchema: {
+        signature: z.string().describe("The sign-off, line by line; empty to go back to the usual one"),
+      },
+    },
+    async ({ signature }) => toToolResult(await callV1("axial/agent-task/suggestion-signature", { signature })),
+  );
+
+  server.registerTool(
+    "send_suggestion",
+    {
+      title: "Send Axial's suggested response",
+      description:
+        "Send Axial's suggested response to the customer as a public response, exactly as written and with its one-off " +
+        "sign-off if it has one, optionally closing the ticket with a resolution. It is held as an approval card on the " +
+        "ticket: nothing reaches the customer until a member of staff approves it. With private: true it is posted at once " +
+        "as a private response (an internal note, staff-only, no approval card), its one-off sign-off written in. Use it when " +
+        "the staff member asks for the draft or suggestion to be sent or posted. Only an Axial agent task's own token can call it.",
+      inputSchema: {
+        version: z.number().int().optional().describe("The version to send; the latest when left out"),
+        private: z.boolean().optional().describe("Post it as a private response (internal note) instead of to the customer"),
+        signature: z
+          .string()
+          .optional()
+          .describe("A one-off sign-off to set on the version first (e.g. \"Regards,\\nClaude\"), when they asked for one with the send"),
+        close: z.boolean().optional().describe("Close the ticket with the response"),
+        resolved: z.string().optional().describe("Resolution category (id or name) when closing"),
+      },
+    },
+    async ({ version, private: isPrivate, signature, close, resolved }) =>
+      toToolResult(
+        await callV1("axial/agent-task/send-suggestion", compact({ version, private: isPrivate, signature, close, resolved })),
+      ),
+  );
+}

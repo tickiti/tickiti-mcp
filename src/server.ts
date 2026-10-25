@@ -8,7 +8,7 @@ import { registerTicketReadTools } from "./tools/ticket-reads.js";
 import { registerReadTools } from "./tools/reads.js";
 import { registerSettingsWriteTools } from "./tools/settings-writes.js";
 import { registerGenericTools } from "./tools/generic.js";
-import { registerAxialSkillTools } from "./tools/axial-skills.js";
+import { registerAxialSkillTools, registerAxialSuggestionTools } from "./tools/axial-skills.js";
 import { registerTicketOperationTools } from "./tools/ticket-operations.js";
 import { registerAdminTools } from "./tools/admin.js";
 
@@ -75,6 +75,7 @@ async function main(): Promise<void> {
   registerSettingsWriteTools(server);
   registerAdminTools(server);
   registerAxialSkillTools(server);
+  registerAxialSuggestionTools(server);
   registerGenericTools(server);
 
   const transport = new StdioServerTransport();
