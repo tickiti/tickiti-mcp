@@ -88,6 +88,12 @@ The server reads two environment variables (it fails fast on startup if either i
 | `TICKITI_API_BASE` | Your Tickiti install's public address, no trailing slash — e.g. `https://support.example.com`. The server appends `/api/v1/…`. |
 | `TICKITI_API_TOKEN` | The bearer token. Its abilities determine what the assistant can do. |
 
+Optional:
+
+| Variable | Purpose |
+|---|---|
+| `TICKITI_MCP_FILE_ROOTS` | The directories, separated as `PATH` is (`;` on Windows, `:` elsewhere), that a tool may read a local file from: `content_path`, inline and out-of-line attachments, and `upload_template_image`. Links are resolved first, so one cannot lead outside a root. A path outside every root, or missing, gets the same error. Unset, a tool reads any file the process can. Set it for a process whose tool arguments can be steered by what it reads, such as an Axial agent task. It does not limit where `export_responses` and `download_attachment` write. |
+
 ### More than one instance
 
 To reach several Tickiti installs from one server (production and staging, say), add

@@ -1,7 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
-import { readFileSync } from "node:fs";
-import { basename } from "node:path";
+import { readFileSync, realpathSync } from "node:fs";
+import { basename, delimiter, isAbsolute, relative, sep } from "node:path";
 
 /**
  * The single chokepoint every tool calls through. Owns:
@@ -104,6 +104,45 @@ export function assertConfig(): void {
   }
 }
 
+/**
+ * TICKITI_MCP_FILE_ROOTS: the directories (separated as PATH is) a tool may read a local file
+ * from, for a process whose tool arguments can be steered by what it reads, such as an agent
+ * task. Unset, a tool reads whatever the process can, as a staff member's own session always has.
+ */
+const FILE_ROOTS = (process.env.TICKITI_MCP_FILE_ROOTS ?? "")
+  .split(delimiter)
+  .map((r) => r.trim())
+  .filter(Boolean);
+
+/**
+ * The path to read for a path a tool was given. With roots set, links are resolved first so one
+ * cannot lead out of a root, and the resolved path is what gets read. Missing and outside give
+ * the same error, so a refused path says nothing about what exists there.
+ */
+export function readablePath(filePath: string): string {
+  if (!FILE_ROOTS.length) return filePath;
+
+  let real: string | undefined;
+  try {
+    real = realpathSync.native(filePath);
+  } catch {
+    /* refused below */
+  }
+  if (real !== undefined) {
+    for (const root of FILE_ROOTS) {
+      let realRoot: string;
+      try {
+        realRoot = realpathSync.native(root);
+      } catch {
+        continue;
+      }
+      const rel = relative(realRoot, real);
+      if (rel && rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel)) return real;
+    }
+  }
+  throw new Error("not a file under TICKITI_MCP_FILE_ROOTS");
+}
+
 export interface ApiResult {
   ok: boolean;
   status: number;
@@ -196,7 +235,7 @@ export async function uploadFileV1(
 
   let bytes: Buffer;
   try {
-    bytes = readFileSync(filePath);
+    bytes = readFileSync(readablePath(filePath));
   } catch (e) {
     return {
       ok: false,

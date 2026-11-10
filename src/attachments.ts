@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { basename, extname } from "node:path";
-import { uploadFileV1 } from "./client.js";
+import { readablePath, uploadFileV1 } from "./client.js";
 
 /**
  * Inline-image support for the ticket write tools.
@@ -37,7 +37,7 @@ export const SUPPORTED_IMAGE_EXTS = Object.keys(IMAGE_MIME);
  */
 export function readContentFile(path: string): string {
   try {
-    return readFileSync(path, "utf8");
+    return readFileSync(readablePath(path), "utf8");
   } catch (e) {
     throw new Error(`Cannot read content_path ${path}: ${e instanceof Error ? e.message : String(e)}`);
   }
@@ -87,7 +87,7 @@ export function inlineImagesIntoContent(
 
     let bytes: Buffer;
     try {
-      bytes = readFileSync(att.path);
+      bytes = readFileSync(readablePath(att.path));
     } catch (e) {
       throw new Error(
         `Cannot read attachment file ${att.path}: ${e instanceof Error ? e.message : String(e)}`,

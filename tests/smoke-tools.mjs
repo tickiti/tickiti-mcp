@@ -15,7 +15,7 @@ const EXPECTED = [
   "get_token_info", "send_email", "search_sent_mail", "render_template", "upload_template_image",
   "get_perspective", "list_perspectives", "list_stock_responses", "create_template", "update_template",
   "list_api_tokens", "create_api_token", "update_api_token", "revoke_api_token", "list_instances",
-  "list_endpoints", "tickiti_call",
+  "list_endpoints", "tickiti_call", "upsert_axial_skill_question", "delete_axial_skill_question",
 ];
 
 async function tools(env) {

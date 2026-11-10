@@ -12,6 +12,7 @@ import { registerAxialSkillTools, registerAxialSuggestionTools } from "./tools/a
 import { registerAxialChatTools } from "./tools/axial-chat.js";
 import { registerTicketOperationTools } from "./tools/ticket-operations.js";
 import { registerAdminTools } from "./tools/admin.js";
+import { registerReplyAttachmentTools } from "./tools/reply-attachments.js";
 
 export const VERSION = "0.2.0";
 
@@ -78,6 +79,7 @@ async function main(): Promise<void> {
   registerAxialSkillTools(server);
   registerAxialSuggestionTools(server);
   registerAxialChatTools(server);
+  registerReplyAttachmentTools(server);
   registerGenericTools(server);
 
   const transport = new StdioServerTransport();

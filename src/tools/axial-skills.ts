@@ -60,6 +60,37 @@ const actionShape = z
   })
   .passthrough();
 
+const optionAction = z
+  .object({
+    name: z.string().describe("An action's name"),
+    params: z.record(z.unknown()).optional().describe("Its parameters; {input} is what was typed, {name} a value of the card"),
+  })
+  .passthrough();
+
+const questionOption = z
+  .object({
+    label: z.string().describe("The option's words"),
+    input: z.string().optional().describe("What to type, if the option takes text"),
+    default: z.string().optional().describe("What the typed text starts as"),
+    action: optionAction.optional().describe("An action choosing this option runs"),
+    actions: z.array(optionAction).optional().describe("Several actions, in order, each only if the one before it succeeded"),
+    unless: z.string().optional().describe("A value name: when the run gives it, this option is not offered"),
+    then: z.array(z.string()).optional().describe("Up to 3 question names asked below this one on the same card while this option is chosen"),
+    sets: z.record(z.unknown()).optional().describe("Values an action elsewhere on the card takes while this option is chosen"),
+    selected: z.boolean().optional().describe("Chosen to start with"),
+  })
+  .passthrough();
+
+const questionShape = z
+  .object({
+    name: z.string().describe("Lower-case identifier, e.g. which_device"),
+    question: z.string().optional().describe("The question staff are asked; {name} fills in a value the run gives"),
+    options: z.array(questionOption).optional().describe("1 to 8 options"),
+    enabled: z.boolean().optional(),
+    ordinal: z.number().int().optional(),
+  })
+  .passthrough();
+
 export function registerAxialSkillTools(server: McpServer): void {
   server.registerTool(
     "list_axial_skills",
@@ -159,6 +190,32 @@ export function registerAxialSkillTools(server: McpServer): void {
       inputSchema: { skill: skillRef, name: z.string() },
     },
     async ({ skill, name }) => toToolResult(await callV1("axial/skills/actions/delete", { skill, name })),
+  );
+
+  server.registerTool(
+    "upsert_axial_skill_question",
+    {
+      title: "Add or change an Axial skill question",
+      description:
+        "Add a question template to a skill, or change the one with that name (only the fields passed change). " +
+        "A question is what Axial asks staff on a card when the answer would change the reply; choosing an option " +
+        "can run actions, as the staff member's approval of them. A new question needs question and options. " +
+        "Returns the whole skill. An Axial agent task's token is refused. Requires skills:write.",
+      inputSchema: { skill: skillRef, question: questionShape },
+    },
+    async ({ skill, question }) => toToolResult(await callV1("axial/skills/questions/upsert", { skill, question })),
+  );
+
+  server.registerTool(
+    "delete_axial_skill_question",
+    {
+      title: "Delete an Axial skill question",
+      description:
+        "Remove a question template from a skill by name. Returns the whole skill. An Axial agent task's token is " +
+        "refused. Requires skills:write.",
+      inputSchema: { skill: skillRef, name: z.string() },
+    },
+    async ({ skill, name }) => toToolResult(await callV1("axial/skills/questions/delete", { skill, name })),
   );
 }
 
