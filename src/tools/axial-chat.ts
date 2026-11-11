@@ -147,4 +147,50 @@ export function registerAxialChatTools(server: McpServer): void {
     async ({ ticket_number, ticket_id }) =>
       toToolResult(await callV1("axial/chat/rerun", compact({ ticket_number, ticket_id }))),
   );
+
+  server.registerTool(
+    "list_axial_gaps",
+    {
+      title: "List Axial's gaps",
+      description:
+        "The gap log (Axial > Gaps): what Axial was asked to do and could not, logged from staff conversations with " +
+        "Axial. Each gap with its status, whose it is (tenant: the installation's own tools; axial: Axial itself), " +
+        "what was asked and missing, how often it has been seen, and its history, in which entries by staff without " +
+        "Manage access are marked as recommendations. By default only gaps still to be dealt with (recommended, open, " +
+        "planned). Needs Manage access to Axial. Requires any axial-chat: ability.",
+      inputSchema: {
+        status: z
+          .enum(["active", "all", "recommended", "open", "planned", "done", "wont_do", "merged"])
+          .optional()
+          .describe("active (the default): still to be dealt with; all; or one status"),
+        owner: z.enum(["tenant", "axial"]).optional().describe("Only the installation's own gaps, or only Axial's"),
+        gap_id: z.number().int().optional().describe("Just this gap, whatever its status"),
+      },
+    },
+    async ({ status, owner, gap_id }) => toToolResult(await callV1("axial/gaps", compact({ status, owner, gap_id }))),
+  );
+
+  server.registerTool(
+    "update_axial_gap",
+    {
+      title: "Change an Axial gap",
+      description:
+        "A manager's change to a gap on the gap log: its status (open, planned, done, wont_do) with a note saying why, " +
+        "its title, kind or owner, or merge it into another gap (merge_into; its history stays with it). Each change " +
+        "is recorded in the gap's history with who made it. Needs Manage access to Axial. Requires axial-chat:manage.",
+      inputSchema: {
+        gap_id: z.number().int().describe("The gap to change"),
+        status: z.enum(["open", "planned", "done", "wont_do"]).optional(),
+        status_note: z.string().max(2000).optional().describe("Why it has this status: what was done, or why not"),
+        title: z.string().min(5).max(200).optional(),
+        kind: z.enum(["tool", "data", "permission", "skill"]).optional(),
+        owner: z.enum(["tenant", "axial"]).optional(),
+        merge_into: z.number().int().optional().describe("Fold this gap into that one instead of changing it"),
+      },
+    },
+    async ({ gap_id, status, status_note, title, kind, owner, merge_into }) =>
+      toToolResult(
+        await callV1("axial/gaps/update", compact({ gap_id, status, status_note, title, kind, owner, merge_into })),
+      ),
+  );
 }
