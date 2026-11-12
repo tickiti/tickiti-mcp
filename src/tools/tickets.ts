@@ -401,7 +401,11 @@ export function registerTicketTools(server: McpServer): void {
         "List tickets for a perspective (saved view). Specify perspective_id or " +
         "perspective_name; defaults to the 'All' perspective. Pass ticket numbers " +
         "via search_object for a direct lookup (several numbers in one ticket_number criterion " +
-        "return those tickets). An unknown mode is refused. get_search_modes lists the vocabulary.",
+        "return those tickets). An unknown mode is refused. get_search_modes lists the vocabulary. " +
+        "With a subject, content or subject_content criterion, a member of staff's rows carry `matches`: " +
+        "for each word, where it was found (the subject, a response with its author, date and the text " +
+        "around the word, or a tag comment). A ticket keeps the subject of the message that opened it, " +
+        "so read the matches, not the subject, to tell what a ticket is about.",
       inputSchema: {
         perspective_id: z.number().int().optional(),
         row_limit: z.number().int().min(1).max(5000).optional().describe("Rows to return (default 100)."),
