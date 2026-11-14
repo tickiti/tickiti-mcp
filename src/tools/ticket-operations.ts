@@ -51,7 +51,11 @@ export function registerTicketOperationTools(server: McpServer): void {
     "restore_ticket",
     {
       title: "Restore a deleted ticket",
-      description: "Undo a delete: the ticket comes back with the responses deleted with it. Requires tickets:write.",
+      description:
+        "Undo a delete: the ticket comes back with the responses deleted with it. From an Axial agent task's " +
+        "token, a restore that would bring back public responses the ticket's customer can read is not carried " +
+        "out: a task with a ticket gets a 202 with status awaiting_approval and an approval card for a member of " +
+        "staff; a task with no ticket, and a reply task, which only reads, get a 403. Requires tickets:write.",
       inputSchema: { ticket_number: z.string().describe("Number of the deleted ticket") },
     },
     async ({ ticket_number }) => toToolResult(await callV1("tickets/restore", { ticket_number })),
@@ -64,7 +68,11 @@ export function registerTicketOperationTools(server: McpServer): void {
       description:
         "Merge two tickets, as the ticket browser's Merge: the OLDER ticket survives; the newer one's " +
         "participants and responses (with attachments) are copied into it and the newer ticket is deleted, " +
-        "marked as merged. The result names the survivor. Requires tickets:write and managing both queues.",
+        "marked as merged. The result names the survivor. From an Axial agent task's token, a merge that would " +
+        "add anyone not on the staff to the surviving ticket, or show the other ticket's public responses to its " +
+        "customer, is not carried out: a task with a ticket gets a 202 with status awaiting_approval and an " +
+        "approval card for a member of staff; a reply task, which only reads, gets a 403. Requires tickets:write " +
+        "and managing both queues.",
       inputSchema: {
         ticket_number: z.string().describe("One ticket"),
         other_ticket_number: z.string().describe("The other ticket"),
@@ -117,7 +125,8 @@ export function registerTicketOperationTools(server: McpServer): void {
       description:
         "Read a single response by its response_id alone - with its ticket number, flags, audit and " +
         "attachments - when you don't know which ticket it is on. Always says is_email_sourced and mail_auth " +
-        "(what the receiving mail server concluded about the From address: pass, fail, or null). include " +
+        "(what the receiving mail server concluded about the From address: pass, fail, or null; api when it was " +
+        "posted through the API in the sender's name, so nothing checked the address). include " +
         "original_html: the email as it arrived, before inbound cleaning (null with has_original_html false when " +
         "the stored html already is the original; inline images stay cid: references, listed by cid in the " +
         "attachments); reply_text: the plain text without the quoted history. Requires tickets:read.",
@@ -144,7 +153,11 @@ export function registerTicketOperationTools(server: McpServer): void {
           `attachments)` +
           (verb === "Move" ? " and the original deleted" : "") +
           ". Both tickets record it. For repairing a mis-split thread or a botched clone. Requires tickets:write" +
-          (verb === "Move" ? " and managing both queues." : " and managing the target's queue."),
+          (verb === "Move" ? " and managing both queues." : " and managing the target's queue.") +
+          " From an Axial agent task's token, a public response that would land where someone not on the staff " +
+          "could not already read it is not carried out: a task with a ticket gets a 202 with status " +
+          "awaiting_approval and an approval card for a member of staff; a reply task, which only reads, gets a " +
+          "403. Between two tickets of the same customer it goes straight through.",
         inputSchema: {
           response_ids: z.array(z.number().int()).min(1).max(500).describe("Response ids, in the order to place them"),
           target_ticket_number: z.string().describe("The ticket to put them on"),

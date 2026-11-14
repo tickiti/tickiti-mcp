@@ -84,8 +84,13 @@ export function registerWorkflowTools(server: McpServer): void {
         "clears the rule's failure streak. toggle: is_enabled. reorder: every rule id once, first to run first. " +
         "delete: the rule and its run history. test: a dry run against a ticket the owner can see, of a saved rule " +
         "(id), an unsaved one (event + conditions + actions) or a saved one with parts replaced; changes nothing. " +
-        "runs: a rule's latest 25 runs. Requires an admin owner, the has_automations plan, and workflow:read (list, " +
-        "runs) or workflow:write (the rest, test included).",
+        "runs: a rule's latest 25 runs. An add_participant action takes a member of staff's exact address only; " +
+        "a reply action must name an existing stock response. From Axial, a rule that replies to customers cannot " +
+        "be turned on or saved enabled (saving it disabled is fine), and while another enabled rule replies to " +
+        "customers, enabled rules cannot be toggled, deleted, reordered or have their event, trigger_options, " +
+        "conditions, actions or stop_after changed (name and description still can, and disabled rules that stay " +
+        "disabled are unaffected); a person makes those changes. Requires an admin owner, the " +
+        "has_automations plan, and workflow:read (list, runs) or workflow:write (the rest, test included).",
       inputSchema: {
         action: actionEnum(automations),
         id: z.number().int().optional().describe("The rule"),
