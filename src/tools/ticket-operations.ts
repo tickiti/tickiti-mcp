@@ -116,14 +116,19 @@ export function registerTicketOperationTools(server: McpServer): void {
       title: "Get one response by id",
       description:
         "Read a single response by its response_id alone - with its ticket number, flags, audit and " +
-        "attachments - when you don't know which ticket it is on. Requires tickets:read.",
+        "attachments - when you don't know which ticket it is on. Always says is_email_sourced and mail_auth " +
+        "(what the receiving mail server concluded about the From address: pass, fail, or null). include " +
+        "original_html: the email as it arrived, before inbound cleaning (null with has_original_html false when " +
+        "the stored html already is the original; inline images stay cid: references, listed by cid in the " +
+        "attachments); reply_text: the plain text without the quoted history. Requires tickets:read.",
       inputSchema: {
         response_id: z.union([z.string(), z.number()]).describe("Response.id"),
-        max_body_chars: z.number().int().min(0).optional().describe("Cut html / plain_text to this many characters"),
+        max_body_chars: z.number().int().min(0).optional().describe("Cut html / plain_text (and the includes) to this many characters"),
+        include: z.array(z.enum(["original_html", "reply_text"])).optional(),
       },
     },
-    async ({ response_id, max_body_chars }) =>
-      toToolResult(await callV1("tickets/response", compact({ response_id, max_body_chars }))),
+    async ({ response_id, max_body_chars, include }) =>
+      toToolResult(await callV1("tickets/response", compact({ response_id, max_body_chars, include }))),
   );
 
   for (const [name, path, verb] of [
@@ -238,7 +243,8 @@ export function registerTicketOperationTools(server: McpServer): void {
       title: "What this token can do",
       description:
         "This token's abilities, its owner's roles and the instance's plan features, per API family - so a " +
-        "403 can be traced to a missing ability, role or plan. Any token.",
+        "403 can be traced to a missing ability, role or plan. Extra abilities (such as " +
+        "tickets:customer_impersonation) are reported separately, not folded into read or write. Any token.",
       inputSchema: {},
     },
     async () => toToolResult(await callV1("token", {})),

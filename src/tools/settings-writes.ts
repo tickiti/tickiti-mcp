@@ -123,11 +123,12 @@ export function registerSettingsWriteTools(server: McpServer): void {
       title: "Update a template / FAQ",
       description:
         "Edit an email/notification template or FAQ by id (the body is nested under `template` " +
-        "server-side; this tool wraps it for you). Only the fields you pass are changed: the tool " +
-        "reads the template first and sends content / subject / is_enabled back unchanged when you " +
-        "leave them out (older Tickiti builds blanked omitted fields). content is Quill HTML; inline " +
+        "server-side; this tool wraps it for you). Only the fields you pass are sent, and Tickiti " +
+        "changes only those. content is Quill HTML; inline " +
         "data: images are extracted to attachments. Text fields other than content are limited to " +
-        "255 characters. FAQ identifiers are immutable. Requires templates:write.",
+        "255 characters. FAQ identifiers are immutable. category and subcategory are kept only on a " +
+        "stock response (type stock-response; update_stock_response is the tool for those): on any other " +
+        "type Tickiti stores them empty, whatever is sent. Requires templates:write.",
       inputSchema: {
         id: z.union([z.string(), z.number()]).describe("Template.id"),
         identifier: z.string().max(255).optional().describe("Template identifier (ignored for FAQs)"),
@@ -137,22 +138,16 @@ export function registerSettingsWriteTools(server: McpServer): void {
         legend: z.string().max(255).optional(),
         description: z.string().max(255).optional(),
         ordinal: z.number().int().optional().describe("FAQ ordering"),
+        category: z.string().max(255).optional().describe("Stock responses only; stored empty on any other type"),
+        subcategory: z.string().max(255).optional().describe("Stock responses only; stored empty on any other type"),
+        keywords: z.string().max(255).optional().describe("Search terms (comma- or newline-separated)"),
       },
     },
-    async ({ id, ...fields }) => {
-      const sent: Record<string, unknown> = compact({ id, ...fields });
-      // Read-modify-write for the three fields older servers reset when omitted, so a
-      // one-field update can never blank a live template body (#420800).
-      if (sent.content === undefined || sent.is_enabled === undefined || sent.subject === undefined) {
-        const cur = await callV1("templates/show", { template_id: id });
-        const t = (cur.body as { template?: Record<string, unknown> } | null)?.template;
-        if (!cur.ok || !t) return toToolResult(cur);
-        if (sent.content === undefined) sent.content = t.content;
-        if (sent.is_enabled === undefined) sent.is_enabled = Boolean(t.is_enabled);
-        if (sent.subject === undefined) sent.subject = t.subject;
-      }
-      return toToolResult(await callV1("templates/update", { template: sent }, { idempotent: true }));
-    },
+    // Only the given fields: Tickiti's template_save patches the keys it is sent. (This
+    // used to read the template and send content / subject / is_enabled back, for builds
+    // that blanked omitted fields, which could overwrite a staff edit made in between.)
+    async ({ id, ...fields }) =>
+      toToolResult(await callV1("templates/update", { template: compact({ id, ...fields }) }, { idempotent: true })),
   );
 
   server.registerTool(
@@ -160,8 +155,10 @@ export function registerSettingsWriteTools(server: McpServer): void {
     {
       title: "Create a template / FAQ",
       description:
-        "Create an email/notification template or FAQ. Every field is stored (subject, content, " +
-        "description, ...); is_enabled: false creates it as a disabled draft. Requires templates:write.",
+        "Create an email/notification template or FAQ. The fields sent are stored (subject, content, " +
+        "description, keywords, ...), except category and subcategory, which are kept only on a stock " +
+        "response (type stock-response; create_stock_response is the tool for those) and stored empty on " +
+        "any other type. is_enabled: false creates it as a disabled draft. Requires templates:write.",
       inputSchema: {
         type: z.string().describe("e.g. 'email', 'notification', 'faq'"),
         identifier: z.string().max(255).optional().describe("Required except for FAQs"),
@@ -171,6 +168,9 @@ export function registerSettingsWriteTools(server: McpServer): void {
         legend: z.string().max(255).optional(),
         is_enabled: z.boolean().optional().describe("Default true"),
         ordinal: z.number().int().optional().describe("FAQ ordering"),
+        category: z.string().max(255).optional().describe("Stock responses only; stored empty on any other type"),
+        subcategory: z.string().max(255).optional().describe("Stock responses only; stored empty on any other type"),
+        keywords: z.string().max(255).optional().describe("Search terms (comma- or newline-separated)"),
       },
     },
     async (args) => toToolResult(await callV1("templates/create", compact({ ...(args as Record<string, unknown>) }), { idempotent: true })),

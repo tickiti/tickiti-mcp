@@ -119,7 +119,7 @@ export function registerAxialChatTools(server: McpServer): void {
         card_id: z.number().int().describe("The card's id"),
         decision: z.enum(["answer", "dismiss"]).optional().describe("answer (the default) or dismiss"),
         answers: z
-          .record(z.object({ option: z.string(), text: z.string().optional() }))
+          .record(z.object({ option: z.string(), text: z.string().optional() }).strict())
           .optional()
           .describe('By question id: { "<question id>": { "option": "<option id>", "text": "..." } }'),
         note: z.string().optional().describe("A note for Axial with the answer"),

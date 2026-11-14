@@ -125,7 +125,11 @@ export function registerAdminTools(server: McpServer): void {
     "list_api_tokens",
     {
       title: "List API keys",
-      description: "The tenant's public-API keys (no secrets): owner, abilities, IP allow-list, last use. Requires administration:read.",
+      description:
+        "The tenant's Tickiti API keys (no secrets): owner, abilities, IP allow-list, last use. Older Tickiti keys " +
+        "holding legacy abilities are listed too: `abilities` shows only their registry abilities and has_legacy " +
+        "is true (the legacy ones are not named). Keys of other applications sharing the database, and Axial's " +
+        "own internal keys, are not listed. Requires administration:read.",
       inputSchema: {},
     },
     async () => toToolResult(await callV1("administration/api-tokens", {})),
@@ -138,11 +142,21 @@ export function registerAdminTools(server: McpServer): void {
       description:
         "Mint an API key. A token can only grant abilities it holds itself (list_api_tokens shows which), so " +
         "this can rotate or narrow access, never widen it - wider keys are made in Administration → API keys. " +
+        "tickets:customer_impersonation (open tickets and post responses as the customer, for an integration " +
+        "such as a website contact form) is granted by an admin, only on a key owned by System or an API user, " +
+        "and only with tickets:write in the same abilities (it does not imply tickets:read); the key holds it " +
+        "only while its owner is still System or an API user. " +
         "Returns the plain-text token once. Requires administration:write.",
       inputSchema: {
         name: z.string().max(255).describe("Description of the key"),
-        owner: z.string().describe("'system' or a staff user id"),
-        abilities: z.array(z.string()).min(1).describe("e.g. ['tickets:read','tickets:write']"),
+        owner: z.string().describe("'system' or a staff or API user id"),
+        abilities: z
+          .array(z.string())
+          .min(1)
+          .describe(
+            "e.g. ['tickets:read','tickets:write'], or ['tickets:write','tickets:customer_impersonation'] for a " +
+              "contact-form integration (System/API-user owner only)",
+          ),
         allowed_ip: z.string().optional().describe("Only accept the key from this IP"),
       },
     },
@@ -155,7 +169,10 @@ export function registerAdminTools(server: McpServer): void {
       title: "Change an API key",
       description:
         "Change a key's abilities (only to ones this token holds), IP allow-list (null clears it) or name. " +
-        "Requires administration:write.",
+        "tickets:customer_impersonation follows create_api_token's rules (System/API-user owner, with " +
+        "tickets:write). A key with legacy abilities (has_legacy in list_api_tokens) can have its IP allow-list " +
+        "set or changed (never cleared: 422, errors.allowed_ip) and its name changed, but not its abilities: " +
+        "make a new key instead. Requires administration:write.",
       inputSchema: {
         id: z.union([z.string(), z.number()]),
         abilities: z.array(z.string()).min(1).optional(),
@@ -170,7 +187,9 @@ export function registerAdminTools(server: McpServer): void {
     "revoke_api_token",
     {
       title: "Revoke an API key",
-      description: "Delete an API key; anything using it stops working at once. Requires administration:write.",
+      description:
+        "Delete an API key; anything using it stops working at once. Any key list_api_tokens shows can be " +
+        "revoked, legacy ones included; a key it doesn't show answers 'Token not found.'. Requires administration:write.",
       inputSchema: { id: z.union([z.string(), z.number()]) },
     },
     async ({ id }) => toToolResult(await callV1("administration/api-tokens/revoke", { id })),
@@ -183,8 +202,8 @@ export function registerAdminTools(server: McpServer): void {
     {
       title: "List configured Tickiti instances",
       description:
-        "The Tickiti instances this server is configured for (name and address, no tokens). With more than " +
-        "one, every tool takes an optional `instance`.",
+        "The Tickiti instances this server is configured for (name and address, no tokens). Every tool takes an " +
+        "optional `instance` naming one of them; the first is the default.",
       inputSchema: {},
     },
     async () => ({

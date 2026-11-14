@@ -1,18 +1,49 @@
 /**
  * Request-body parameters for endpoints reached through tickiti_call, shown by
- * list_endpoints. The manifest is generated from Laravel's route table, which knows
- * path params but not body fields, so a caller had nothing to check a parameter name
- * against (sent_mail.search wants `q`; `search` returned nothing and read as "no
- * matches"). Hand-kept: add an entry when an endpoint's body is not obvious.
+ * list_endpoints as `body`. The manifest is generated from Laravel's route table, which
+ * knows path params but not body fields, so a caller had nothing to check a parameter
+ * name against (sent_mail.search wants `q`; `search` returned nothing and read as "no
+ * matches").
+ *
+ * Every field name and rule now comes from src/generated/body-fields.ts (`body_fields`),
+ * read from the controllers' own validation. These hand-kept lines are for what rules
+ * cannot say: which of several shapes to send, what a field means, what an endpoint does
+ * that its name does not. Add one when an endpoint's body is not obvious from its rules.
  */
 export const PARAM_HINTS: Record<string, string> = {
+  "api.v1.faqs": "GET, no body; lang? (query string, the FAQ language for a customer's token; a staff token gets the staff language)",
+  "api.v1.administration.branding.app_logo": "multipart: the image as `logo` (tickiti_call file_path; png/jpg/svg/webp, 500 KB)",
+  "api.v1.administration.branding.email_logo": "multipart: the image as `logo` (tickiti_call file_path; png, 500 KB)",
+  "api.v1.administration.diagnostics.upload": "multipart: the zip as `file` (tickiti_call file_path)",
+  "api.v1.tickets.attachment_upload": "multipart: `file` (tickiti_call file_path); returns {sha256, name, file_size} to reference in attachments[] on create/respond",
+  "api.v1.administration.users.index": "q? (filter), staff_only? (default true), user_id? / queue_id? (the selected user and queue, as on the Users page)",
+  "api.v1.administration.users.update": "path user; is_staff, is_admin, tonic_notifications (all three, every time), can_crm?, is_api_user?, is_sysadmin? (taken only from a sysadmin token owner), two_factor_required?, axial_access?. is_admin implies is_staff; is_sysadmin implies both",
+  "api.v1.administration.users.queue_upsert": "path user + queue; can_view, can_manage, can_delete, treat_as_inbox, receive_inbox_errors - all five booleans, every time. Manage needs view (Contribute), Delete needs Manage. Staff users only. Manage on a queue is what lets someone move tickets into or out of it and assign within it",
+  "api.v1.administration.users.queue_detach": "path user + queue; no body - removes every right that user has on that queue",
+  "api.v1.administration.teams.create": "name, user_ids[] (member user ids; must be present, may be empty)",
+  "api.v1.administration.teams.update": "team_id, name, user_ids[] - the whole membership, replacing it",
+  "api.v1.administration.teams.delete": "team_id",
+  "api.v1.settings.perspectives.create": "name, shared (true: every member of staff sees it; false: the owner only), then description?, show_in_crm?, display_mode? (card|list), conditions[]? {field,operator (=|!=|like),value}, orders[]? {field,ascending}, user_id?, impersonate_user_id?",
+  "api.v1.settings.perspectives.delete": "perspective_id",
+  "api.v1.settings.hashtags.delete": "tag - deletes every hashtag row with that tag (hashtags.index lists them)",
+  "api.v1.settings.watchlists.add_tickets": "watchlist_id, ticket_numbers[] and/or ticket_ids[] (at least one ticket, up to 500); a private list only by its owner, and only tickets they can see",
+  "api.v1.settings.watchlists.remove_tickets": "watchlist_id, ticket_numbers[] and/or ticket_ids[] (a deleted ticket, or one out of sight, can still be taken off); a private list only by its owner",
+  "api.v1.settings.watchlists.reorder": "watchlist_id, ticket_numbers[] and/or ticket_ids[] - the list's tickets in their new order; a private list only by its owner (not an admin), and only tickets they can see",
+  "api.v1.workflow.business_hours.update": "mode (always_on|simple|per_day), simple_start/simple_end (minutes from midnight, 0-1440), mon_enabled..sun_enabled, per_day_ranges[]? {start,end} - the whole setting each time",
+  "api.v1.workflow.escalations.create": "minutes, action (notify|email), email, repeat_minutes?",
+  "api.v1.workflow.escalations.update": "id, then minutes, action (notify|email), email, repeat_minutes? - all the required fields each time",
+  "api.v1.workflow.queues.move": "from_queue_id, to_queue_id - one raw UPDATE of every (not deleted) ticket's queue that skips the ticket engine: no history rows, and perspectives and open views are not refreshed. Use queues.move_tickets (the move_queue_tickets tool) instead",
+  "api.v1.workflow.queues.move_tickets": "from_queue or from_queue_id, to_queue or to_queue_id, limit? (1-500, default 500), after_id?, dry_run? - moves through the ticket engine (history, perspectives and open views follow), oldest first; skipped tickets stay in the queue, so repeat while the reply's `more` is true, passing its next_after_id as after_id (not while `remaining` > 0). Prefer this to queues.move",
+  "api.v1.tickets.close": "ticket_number OR ticket_id; from_email? (defaults to the token owner, whatever `required` says: close fills it in before respond's rules run), content?, is_internal?, resolved?, queue?, subject?, signature?",
+  "api.v1.tickets.alert": "source (the reporting system; its alerts share one ticket), problem_key (stable name of the problem; a repeat while the ticket is open adds nothing), title, content (HTML, the internal note), severity? (critical|normal), latched?, originator_email_address? (a staff account to write as)",
+  "api.v1.mail.mailboxes.update": "mailbox_id, then the whole mailbox (its required fields every time); passwords and secrets go through mailboxes.set_password",
   "api.v1.mail.send": "to_address, subject+content OR template_identifier+data, cc[]?, mailbox?, validate_address? (Idempotency-Key sent for you)",
   "api.v1.mail.sent_mail.list": "range_days? (1-30, default 1), limit? (1-300)",
   "api.v1.mail.sent_mail.search": "q (matches subject and to_address; `search` also accepted), limit? (1-500)",
   "api.v1.mail.sent_mail.show": "id",
   "api.v1.templates.show": "template_id",
   "api.v1.templates.search": "search, mode?, type?",
-  "api.v1.templates.create": "type, identifier (not for faq), subject?, content?, description?, legend?, keywords?, is_enabled?, ordinal?",
+  "api.v1.templates.create": "type, identifier (not for faq), subject?, content?, description?, legend?, category? and subcategory? (kept only for type stock-response; stored empty for any other type), keywords?, is_enabled?, ordinal?",
   "api.v1.templates.update": "template: { id, ...only the fields to change } - omitted fields keep their values",
   "api.v1.templates.delete": "template_id",
   "api.v1.templates.render": "template_identifier, data{}, type? (default email) - renders, sends nothing",
@@ -28,6 +59,6 @@ export const PARAM_HINTS: Record<string, string> = {
   "api.v1.workflow.queues.update": "queue_id, then only what changes: name?, track_resolutions?, is_parked?, release_queue_id?, outgoing_mailbox_id?, content_type?",
   "api.v1.tickets.query": "search_object { search_perspective?, criteria: [{mode, tokens[], match?}] }, perspective_id?, row_limit? (top level, default 100)",
   "api.v1.tickets.responses_query": "filters (created_from/to, is_internal, staff_response, queue[], queue_id[], ticket_number[], response_id[], created_by_email, has_attachments, is_empty), fields[]?, metadata_only?, count_only?, group_by?, limit?, cursor?",
-  "api.v1.administration.api_tokens.create": "name, owner ('system' | staff user id), abilities[] (only ones this token holds), allowed_ip?",
-  "api.v1.administration.api_tokens.update": "id, abilities[]?, allowed_ip?, name?",
+  "api.v1.administration.api_tokens.create": "name, owner ('system' | staff or API user id), abilities[] (only ones this token holds; tickets:customer_impersonation needs tickets:write and a System/API-user owner), allowed_ip?",
+  "api.v1.administration.api_tokens.update": "id, abilities[]? (not on a has_legacy key), allowed_ip? (null clears it, but not on a has_legacy key), name?",
 };

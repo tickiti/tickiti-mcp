@@ -25,7 +25,32 @@ export function registerReadTools(server: McpServer): void {
     },
     async ({ scope }) => toToolResult(await callV1("settings/perspectives", scope ? { scope } : {})),
   );
-  simpleRead(server, "list_watchlists", "List watchlists", "settings/watchlists");
+  server.registerTool(
+    "list_watchlists",
+    {
+      title: "List watchlists",
+      description:
+        "The watch lists the page shows the token's owner (an admin sees everyone's), filtered. with_tickets adds " +
+        "each list's tickets in their order (number, subject, status): a private list's only to its owner, and only " +
+        "tickets they can see. Change them with manage_watchlist. Requires settings:read.",
+      inputSchema: {
+        id: z.number().int().optional(),
+        name: z.string().max(255).optional().describe("Part of the name, any case"),
+        owner: z.union([z.number().int(), z.string()]).optional().describe("'me', a user id or an email"),
+        shared: z.boolean().optional(),
+        include_users: z.boolean().optional().describe("false leaves out the admin's user list (default true)"),
+        with_tickets: z.boolean().optional(),
+        filters: z.record(z.any()).optional().describe("Any other filter payload, passed as it is"),
+      },
+    },
+    async ({ filters, ...rest }) =>
+      toToolResult(
+        await callV1("settings/watchlists", {
+          ...(filters ?? {}),
+          ...Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined)),
+        }),
+      ),
+  );
   server.registerTool(
     "list_stock_responses",
     {
@@ -88,14 +113,26 @@ export function registerReadTools(server: McpServer): void {
     {
       title: "Run an analytics report",
       description:
-        "Run a Tickiti analytics report (requires the reports plan + admin). " +
-        "'meta' returns the filterable queues; the others accept date/queue filters via `filters`.",
+        "Run a Tickiti analytics report (requires the reports plan + admin, and reports:read). " +
+        "'meta' returns the filterable queues; the others accept date/queue filters via `filters` " +
+        "(volumes, sla and satisfaction: { date_from, date_to, group_by: day|week|month, queue_id? }). " +
+        "sla needs the has_sla plan, satisfaction has_csat. axial-usage: Axial's tokens and estimated cost " +
+        "(a superuser's token). axial-reports: staff ratings of Axial's content, filters { from?, to?, period?, " +
+        "tz?, choice?, user?, skill? } (an admin with Manage access to Axial). Both Axial reports need the " +
+        "AI-assistant plan.",
       inputSchema: {
-        report: z.enum(["meta", "resolutions", "volumes", "response-times", "agent-activity"]),
-        filters: z.record(z.any()).optional().describe("e.g. { from, to, queue_id }"),
+        report: z.enum([
+          "meta", "resolutions", "volumes", "response-times", "agent-activity", "sla", "satisfaction",
+          "axial-usage", "axial-reports",
+        ]),
+        filters: z.record(z.any()).optional().describe("e.g. { date_from, date_to, group_by, queue_id }"),
       },
     },
-    async ({ report, filters }) => toToolResult(await callV1(`reports/${report}`, filters ?? {})),
+    async ({ report, filters }) => {
+      // The Axial reports live under the axial family, the rest under reports.
+      const path = report.startsWith("axial-") ? `axial/${report.slice(6)}` : `reports/${report}`;
+      return toToolResult(await callV1(path, filters ?? {}));
+    },
   );
 }
 

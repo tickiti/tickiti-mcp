@@ -15,7 +15,7 @@ import { basename, delimiter, isAbsolute, relative, sep } from "node:path";
  *
  * Instances: TICKITI_API_BASE + TICKITI_API_TOKEN name the default one (called
  * TICKITI_INSTANCE_NAME, or "default"). More can be added with TICKITI_INSTANCES -
- * JSON, or a path to a JSON file - mapping a name to { base, token }. Every tool then
+ * JSON, or a path to a JSON file - mapping a name to { base, token }. Every tool
  * takes an optional `instance`, so production and staging can be used in one session
  * without reconnecting the server (the server used to be bound to one instance at
  * spawn time).
@@ -37,23 +37,39 @@ function loadInstances(): Instance[] {
     out.push({ name: process.env.TICKITI_INSTANCE_NAME || "default", base, token });
   }
 
-  const raw = (process.env.TICKITI_INSTANCES ?? "").trim();
+  // The value holds tokens, so no error below ever quotes it, or a parser's or the file
+  // system's message (both echo the text they choke on): a mistyped value (quoted, a BOM,
+  // an unquoted token) printed to stderr ends up in the client's MCP logs.
+  const raw = (process.env.TICKITI_INSTANCES ?? "").replace(/^\uFEFF/, "").trim();
   if (raw) {
     let text = raw;
     if (!raw.startsWith("{")) {
+      // Named in the error only when it is plainly a JSON file's path: a token pasted here
+      // (Sanctum's "12|..." or any other) must not be echoed as if it were one.
+      const looksLikePath = /\.json$/i.test(raw) && !/[{}"'|]/.test(raw);
       try {
-        text = readFileSync(raw, "utf8");
+        text = readFileSync(raw, "utf8").replace(/^\uFEFF/, "");
       } catch (e) {
-        throw new Error(`TICKITI_INSTANCES: cannot read ${raw}: ${e instanceof Error ? e.message : String(e)}`);
+        const code = (e as NodeJS.ErrnoException)?.code;
+        throw new Error(
+          looksLikePath
+            ? `TICKITI_INSTANCES: cannot read the file ${raw}${code ? ` (${code})` : ""}.`
+            : `TICKITI_INSTANCES (${raw.length} characters) is neither JSON starting with '{' nor a readable file path; its text is not shown because it may hold tokens.`,
+        );
       }
     }
-    let parsed: Record<string, { base?: string; token?: string }>;
+    let parsed: unknown;
     try {
       parsed = JSON.parse(text);
-    } catch (e) {
-      throw new Error(`TICKITI_INSTANCES is not valid JSON: ${e instanceof Error ? e.message : String(e)}`);
+    } catch {
+      throw new Error(
+        `TICKITI_INSTANCES ${text === raw ? `(${raw.length} characters)` : "file"} is not valid JSON; its text is not shown because it may hold tokens.`,
+      );
     }
-    for (const [name, v] of Object.entries(parsed)) {
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error('TICKITI_INSTANCES must be a JSON object mapping a name to { "base", "token" }.');
+    }
+    for (const [name, v] of Object.entries(parsed as Record<string, { base?: string; token?: string }>)) {
       if (out.some((i) => i.name === name)) continue;
       out.push({ name, base: String(v?.base ?? "").replace(/\/+$/, ""), token: String(v?.token ?? "") });
     }
@@ -69,10 +85,6 @@ export function instanceList(): { name: string; base: string; default: boolean }
   return INSTANCES.map((i, n) => ({ name: i.name, base: i.base, default: n === 0 }));
 }
 
-export function hasMultipleInstances(): boolean {
-  return INSTANCES.length > 1;
-}
-
 /** Run fn with every call inside it going to the named instance (undefined = default). */
 export function withInstance<T>(name: string | undefined, fn: () => Promise<T>): Promise<T> {
   if (name !== undefined && !INSTANCES.some((i) => i.name === name)) {
@@ -85,6 +97,11 @@ export function withInstance<T>(name: string | undefined, fn: () => Promise<T>):
 function current(): Instance {
   const name = context.getStore();
   return (name !== undefined ? INSTANCES.find((i) => i.name === name) : undefined) ?? INSTANCES[0];
+}
+
+/** The name of the instance calls are going to now (for per-instance caches). */
+export function currentInstanceName(): string {
+  return current()?.name ?? "";
 }
 
 export function assertConfig(): void {
@@ -155,11 +172,27 @@ export interface ApiResult {
 export interface CallOptions {
   /** When true, mint and send an Idempotency-Key header (create/respond writes). */
   idempotent?: boolean;
+  /** HTTP method. Every v1 endpoint is POST but one (GET faqs); a GET sends the body as a query string. */
+  method?: string;
+  /** Give up after this many milliseconds (default TICKITI_API_TIMEOUT_MS, 30 s). */
+  timeoutMs?: number;
+}
+
+/** A body as a query string, for a GET: scalars as they are, arrays as key[]=, objects as JSON. */
+function queryString(body: Record<string, unknown>): string {
+  const q = new URLSearchParams();
+  for (const [k, v] of Object.entries(body)) {
+    if (v === undefined || v === null) continue;
+    if (Array.isArray(v)) for (const x of v) q.append(`${k}[]`, typeof x === "object" ? JSON.stringify(x) : String(x));
+    else q.append(k, typeof v === "object" ? JSON.stringify(v) : typeof v === "boolean" ? (v ? "1" : "0") : String(v));
+  }
+  const s = q.toString();
+  return s ? `?${s}` : "";
 }
 
 /**
- * POST a JSON body to /api/v1/{path}. Every v1 endpoint is POST, so this is the
- * only verb the shim needs.
+ * Call /api/v1/{path}: a JSON body by POST, which every v1 endpoint takes but GET faqs,
+ * or a query string by GET when opts.method says so.
  */
 export async function callV1(
   path: string,
@@ -167,31 +200,34 @@ export async function callV1(
   opts: CallOptions = {},
 ): Promise<ApiResult> {
   const { base, token } = current();
-  const url = `${base}/api/v1/${path.replace(/^\/+/, "")}`;
+  const method = (opts.method ?? "POST").toUpperCase();
+  const get = method === "GET" || method === "HEAD";
+  const url = `${base}/api/v1/${path.replace(/^\/+/, "")}${get ? queryString(body) : ""}`;
 
   const headers: Record<string, string> = {
-    "Content-Type": "application/json",
     Accept: "application/json",
     Authorization: `Bearer ${token}`,
   };
+  if (!get) headers["Content-Type"] = "application/json";
   if (opts.idempotent) headers["Idempotency-Key"] = randomUUID();
 
+  const timeout = opts.timeoutMs ?? TIMEOUT_MS;
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeout);
 
   let res: Response;
   try {
     res = await fetch(url, {
-      method: "POST",
+      method,
       headers,
-      body: JSON.stringify(body),
+      body: get ? undefined : JSON.stringify(body),
       signal: controller.signal,
     });
   } catch (err) {
     clearTimeout(timer);
     const reason =
       err instanceof Error && err.name === "AbortError"
-        ? `request timed out after ${TIMEOUT_MS}ms`
+        ? `request timed out after ${timeout}ms`
         : `network error: ${err instanceof Error ? err.message : String(err)}`;
     return { ok: false, status: 0, body: null, summary: `Failed to reach ${url} — ${reason}` };
   } finally {
@@ -218,17 +254,19 @@ export async function callV1(
 }
 
 /**
- * Upload one local file to POST /api/v1/tickets/attachment-upload (multipart),
- * for out-of-line (non-inline) attachments. The endpoint is content-addressed
- * by sha256, so a re-upload of identical bytes is a no-op and no idempotency
- * key is needed. Reads the file off disk here — the model never handles bytes.
- * Returns the parsed { sha256, name, file_size } on success.
+ * Upload one local file to POST /api/v1/{path} (multipart): by default
+ * tickets/attachment-upload, for out-of-line (non-inline) attachments. That endpoint
+ * is content-addressed by sha256, so a re-upload of identical bytes is a no-op and no
+ * idempotency key is needed. Reads the file off disk here — the model never handles
+ * bytes. `fileField` is the form field the file goes in ('file' unless the endpoint
+ * names another, as the branding logos' 'logo' does); `fields` are sent beside it.
  */
 export async function uploadFileV1(
   filePath: string,
   name?: string,
   path = "tickets/attachment-upload",
   fields: Record<string, string> = {},
+  fileField = "file",
 ): Promise<ApiResult> {
   const { base, token } = current();
   const url = `${base}/api/v1/${path}`;
@@ -249,7 +287,7 @@ export async function uploadFileV1(
   const form = new FormData();
   // Wrap in a fresh Uint8Array so the Blob part is ArrayBuffer-backed (a raw
   // Node Buffer's ArrayBufferLike doesn't satisfy the BlobPart DOM type).
-  form.append("file", new Blob([new Uint8Array(bytes)]), fileName);
+  form.append(fileField, new Blob([new Uint8Array(bytes)]), fileName);
   for (const [k, v] of Object.entries(fields)) form.append(k, v);
 
   const controller = new AbortController();
@@ -318,6 +356,15 @@ function summariseError(status: number, body: unknown): string {
     }
   } else if (typeof body === "string" && body.trim()) {
     detail = body.slice(0, 300);
+  }
+
+  // Laravel's own 404 for a route it does not have, as against a record not found: the
+  // instance runs an older (or newer) Tickiti than the endpoint list this server was built
+  // from - a hosted tenant can lag a version. Say so rather than leave a bare "Not found".
+  if (status === 404 && /The route .+ could not be found/i.test(detail)) {
+    detail +=
+      " This Tickiti instance does not have this endpoint: it runs a different build from the one this " +
+      "server's endpoint list came from, so the call needs that instance updated (or the web UI meanwhile).";
   }
 
   return detail ? `${hint} ${detail}`.trim() : hint;

@@ -20,6 +20,17 @@ const contentPathShape = z
       "the shim reads the file, so the text never has to be emitted verbatim.",
   );
 
+/** The reply's signature, on respond and close (ApiController::ticket_respond). */
+const signatureShape = z
+  .enum(["system", "personal", "none", "custom"])
+  .optional()
+  .describe("The reply's signature: system, personal, none, or custom (with signature_custom). Left out, the author's default applies.");
+const signatureCustomShape = z
+  .string()
+  .max(2000)
+  .optional()
+  .describe("A one-off signature for this reply, with signature: 'custom'.");
+
 /** Strip undefined keys so the API call body only carries supplied fields. */
 function compact(obj: Record<string, unknown>): Record<string, unknown> {
   return Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined));
@@ -35,7 +46,7 @@ const attachmentsShape = z
         .string()
         .optional()
         .describe("Token in `content` to replace with this image (controls position). Defaults to {{attach:<name>}}; if absent from the body, the image is appended at the end."),
-    }),
+    }).strict(),
   )
   .optional()
   .describe(
@@ -49,7 +60,7 @@ const filesShape = z
     z.object({
       path: z.string().describe("Path to a file on the machine running the MCP (this dev box). The shim uploads it — never pass base64 yourself."),
       name: z.string().optional().describe("Attachment display name; defaults to the file's basename."),
-    }),
+    }).strict(),
   )
   .optional()
   .describe(
@@ -79,9 +90,16 @@ export function registerTicketTools(server: McpServer): void {
         "subject+content, OR template_identifier+data, OR intervention+data+uid. " +
         "Omit queue_name to use the Inbox; queue_name is not allowed with intervention. " +
         "is_public is REQUIRED: true = the opening response is customer-visible, false = a staff-only internal note. " +
-        "You can set the assignee, priority, status and extra participants at creation. " +
+        "You can set the assignee, priority, status and extra participants at creation, and give a contact form's " +
+        "customer_name, company and other_fields. " +
         "The result's `queue` is where the ticket actually landed (with rerouted/reroute_reason if a routing rule moved it), " +
-        "and tag_warnings lists any @tag that matched nobody (posted as plain text; pass strict_tags to refuse instead).",
+        "and tag_warnings lists any @tag that matched nobody (posted as plain text; pass strict_tags to refuse instead). " +
+        "use_passed_originator_as_responder (posting the opening response as an originator other than the token " +
+        "owner) needs a key holding tickets:customer_impersonation, which only a System or API-user key can have; " +
+        "it is refused (422, errors.use_passed_originator_as_responder) for an internal originator (a staff, " +
+        "mailbox or system address, or one in the installation's own domains), with is_public false, and with " +
+        "intervention or uid. Such a response is never staff, its sender is marked unverified ('api'), and an " +
+        "internal note records which key posted it.",
       inputSchema: {
         originator_email_address: z.string().email(),
         subject: z.string().optional().describe("Pair with content (subject+content path)"),
@@ -98,13 +116,26 @@ export function registerTicketTools(server: McpServer): void {
         is_public: z
           .boolean()
           .describe("Visibility of the opening response: true = customer-visible, false = staff-only internal note. Required - there is no safe default."),
-        use_passed_originator_as_responder: z.boolean().optional().describe("Post the opening response as the originator rather than the token owner."),
+        use_passed_originator_as_responder: z
+          .boolean()
+          .optional()
+          .describe(
+            "Post the opening response as the originator rather than the token owner. For an originator other than " +
+              "the owner this needs a key holding tickets:customer_impersonation and is_public true, with no " +
+              "intervention/uid; an internal (staff, mailbox, system or own-domain) address is refused.",
+          ),
         assigned_to_email: z.string().optional().describe("Assign at creation: a staff email or a team key 'team:<id>' (list_teams / list_staff)."),
         priority: z.enum(["10", "20", "30", "40", "Low", "Normal", "High", "Urgent"]).optional().describe("Priority at creation."),
         status: z.enum(["open", "on-hold", "closed"]).optional().describe("Status at creation (default open)."),
         on_hold_until: z.string().optional().describe("YYYY-MM-DD; required with status on-hold."),
         participants: z.array(z.string().email()).optional().describe("Extra participants added as the ticket is created (list_staff gives staff addresses)."),
         strict_tags: z.boolean().optional().describe("Refuse the create if an @tag or #hashtag matches nobody (default: post it as text and report it in tag_warnings)."),
+        customer_name: z.string().max(255).optional().describe("The customer's name, as a contact form gives it."),
+        company: z.string().max(255).optional().describe("The customer's company."),
+        other_fields: z
+          .array(z.object({ label: z.string().max(255), value: z.string().max(1000) }).strict())
+          .optional()
+          .describe("Further form fields, each { label, value }, shown with the customer's details."),
         attachments: attachmentsShape,
         files: filesShape,
       },
@@ -134,6 +165,10 @@ export function registerTicketTools(server: McpServer): void {
       if (a.on_hold_until !== undefined) data.on_hold_until = a.on_hold_until;
       if (a.participants !== undefined) body.participants = a.participants;
       if (a.strict_tags !== undefined) body.strict_tags = a.strict_tags;
+      // Customer-form extras: top level in the body, not under data.
+      for (const k of ["customer_name", "company", "other_fields"]) {
+        if (a[k] !== undefined) body[k] = a[k];
+      }
 
       // Inline images: embed the local files as data-URIs in the body. The
       // server (create_ticket → TicketActionService) converts them to cid:
@@ -181,14 +216,21 @@ export function registerTicketTools(server: McpServer): void {
         "With no status given, a PUBLIC reply reopens a closed/on-hold ticket (keep_status: true stops it); an " +
         "internal note or an attribute-only change leaves the status and any hold date alone. on_hold_until on its own " +
         "puts the ticket on hold. content may be omitted ONLY when supplying a status/attribute change. The body " +
-        "parameter is `content` (a body sent as html/body/message is refused); any other unknown parameter is listed " +
-        "in the result's ignored_params. send_full_email: true emails the customer the reply itself, not just the " +
-        "'open the ticket' notification. Closing on a queue that tracks resolutions needs `resolved` (list_resolutions). " +
+        "parameter is `content`: an argument this tool does not list (html, body, message, ...) is refused before " +
+        "anything is sent. send_full_email: true emails the customer the reply itself, not just the " +
+        "'open the ticket' notification. signature picks the reply's signature (system | personal | none | custom " +
+        "with signature_custom); left out, the author's default applies. " +
+        "Closing on a queue that tracks resolutions needs `resolved` (list_resolutions). " +
         "To include inline images, pass `attachments` as local file paths and (optionally) " +
         "place {{attach:<name>}} tokens in `content` where each image should appear. " +
         "To attach downloadable files of any type, pass `files` as local file paths. " +
         "Identify the ticket by ticket_number OR ticket_id (internal DB id) — supply exactly one. " +
-        "To close a ticket, prefer close_ticket; to edit an existing response, use edit_response.",
+        "To close a ticket, prefer close_ticket; to edit an existing response, use edit_response. " +
+        "from_email: a person's token always posts as its owner (another address is replaced by the owner's and " +
+        "reported as from_email_replaced). A System or API-user key may post as a member of staff or a system " +
+        "address; posting as a customer needs a key holding tickets:customer_impersonation (else 422, " +
+        "errors.from_email), never in an internal address (a mailbox, own-domain or staff-lookalike one: 422, " +
+        "errors.from_email, as on create), and such a response is never staff and its sender is marked unverified ('api').",
       inputSchema: {
         ticket_number: z
           .string()
@@ -198,7 +240,14 @@ export function registerTicketTools(server: McpServer): void {
           .union([z.string(), z.number()])
           .optional()
           .describe("Ticket.id (internal DB id); supply this OR ticket_number"),
-        from_email: z.string().email().describe("Author email; added as a participant if new"),
+        from_email: z
+          .string()
+          .email()
+          .describe(
+            "Author email; added as a participant if new. A person's token posts as its owner whatever is given; " +
+              "a customer's address needs a key holding tickets:customer_impersonation; an internal (mailbox, " +
+              "own-domain or staff-lookalike) address is refused.",
+          ),
         content: z
           .string()
           .optional()
@@ -252,6 +301,8 @@ export function registerTicketTools(server: McpServer): void {
           .array(z.string().email())
           .optional()
           .describe("Emails to remove as participants (the originator can't be removed)."),
+        signature: signatureShape,
+        signature_custom: signatureCustomShape,
         attachments: attachmentsShape,
         files: filesShape,
       },
@@ -283,8 +334,10 @@ export function registerTicketTools(server: McpServer): void {
         "Close a ticket. Optionally pass content to post a final reply as it closes, and " +
         "resolved (resolution-category id or name) to record the resolution, queue (move the " +
         "ticket to a queue by name) and subject (rename). On a queue that tracks resolutions, " +
-        "`resolved` is required (list_resolutions gives the categories). from_email is " +
-        "optional — defaults to the token owner. Identify the ticket by ticket_number OR " +
+        "`resolved` is required (list_resolutions gives the categories). signature / signature_custom " +
+        "choose the closing reply's signature, as on respond_to_ticket. from_email is " +
+        "optional — defaults to the token owner, and follows respond_to_ticket's rules (a customer's address " +
+        "needs a key holding tickets:customer_impersonation). Identify the ticket by ticket_number OR " +
         "ticket_id. Requires tickets:write.",
       inputSchema: {
         ticket_number: z.string().optional().describe("Ticket.number; supply this OR ticket_id"),
@@ -295,6 +348,8 @@ export function registerTicketTools(server: McpServer): void {
         resolved: z.string().optional().describe("Resolution category id or name (resolution-tracking plan)"),
         queue: z.string().optional().describe("Move the ticket to this queue (TicketQueue.name; must exist)."),
         subject: z.string().optional().describe("Rename the ticket to this subject."),
+        signature: signatureShape,
+        signature_custom: signatureCustomShape,
       },
     },
     async (args) => toToolResult(await callV1("tickets/close", compact({ ...(args as Record<string, unknown>) }), { idempotent: true })),
@@ -324,7 +379,7 @@ export function registerTicketTools(server: McpServer): void {
               find: z.string().min(1).describe("Exact text (HTML) in the stored body"),
               replace: z.string().describe("Replacement ('' to delete)"),
               all: z.boolean().optional().describe("Replace every occurrence (else it must occur exactly once)"),
-            }),
+            }).strict(),
           )
           .optional()
           .describe("Edits to the stored body, applied in order. Exclusive with content."),
@@ -424,7 +479,7 @@ export function registerTicketTools(server: McpServer): void {
               "(originator email), queue " +
               "(name), status, watchlist (id), hashtag, ticket_number, and the date " +
               "filters created_from / created_to / updated_from / updated_to " +
-              "(tokens: ['YYYY-MM-DD'], compared as UTC). get_search_items returns the " +
+              "(tokens: ['YYYY-MM-DD'], compared as UTC). get_search_modes returns the " +
               "live catalog in `available_modes`.",
           ),
       },
