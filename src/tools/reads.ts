@@ -77,7 +77,14 @@ export function registerReadTools(server: McpServer): void {
   // enumerate queue names it needs for create_ticket / routing. Queue admin
   // (create/rename/delete) stays under the admin-gated workflow family, reachable
   // via tickiti_call('workflow/queues', …) with a workflow token.
-  simpleRead(server, "list_queues", "List ticket queues", "tickets/queues");
+  simpleRead(
+    server,
+    "list_queues",
+    "List queues: each one's content_type says what it holds, 'ticket' or 'task'. A ticket lives only in ticket " +
+      "queues and a task only in task queues; Drafts holds unposted drafts of both, and nothing is moved into it; " +
+      "Inbox and Drafts are always ticket queues",
+    "tickets/queues",
+  );
 
   // ---- teams ----
   // Same tickets-family reasoning: a ticket-scoped token needs the team keys that

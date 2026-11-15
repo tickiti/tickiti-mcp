@@ -77,11 +77,14 @@ export function registerTicketReadTools(server: McpServer): void {
   server.registerTool(
     "get_ticket",
     {
-      title: "Get a ticket with its full thread",
+      title: "Get a ticket or task with its full thread",
       description:
-        "Fetch one ticket with its header and full response thread " +
-        "(public + internal staff notes) plus attachment metadata, its participants (with " +
+        "Fetch one ticket (or task) with its header and full thread of responses - a ticket's messages, a task's " +
+        "notes - (public + internal staff notes) plus attachment metadata, its participants (with " +
         "names and staff flags), the raised-by name, the queue name and its linked tickets. " +
+        "The header's `kind` is 'ticket' or 'task'; a task's initial_response_id is its description (its first " +
+        "note; null on a ticket). Each response carries is_pinned and is_task_description. A task's description " +
+        "is listed first, then any other pinned responses, then the rest oldest first. " +
         "Email-sourced threads can be very large: pass fields and/or max_body_chars to keep the " +
         "result small (e.g. fields: ['plain_text'], max_body_chars: 2000). Identify it by " +
         "ticket_number OR ticket_id (internal DB id) — supply exactly one. Requires tickets:read.",
@@ -98,10 +101,11 @@ export function registerTicketReadTools(server: McpServer): void {
   server.registerTool(
     "list_responses",
     {
-      title: "List a ticket's responses",
+      title: "List a ticket's messages or a task's notes",
       description:
-        "List the responses on a ticket (bodies, public/internal flag, author and " +
-        "attachment metadata). fields / max_body_chars keep a long email thread small. Identify " +
+        "List the responses on a ticket or task (bodies, public/internal flag, is_pinned, is_task_description, " +
+        "author and attachment metadata), in get_ticket's order: a task's description first, then other pinned " +
+        "responses, then the rest oldest first. fields / max_body_chars keep a long email thread small. Identify " +
         "it by ticket_number OR ticket_id (internal DB id) — supply exactly one. Requires tickets:read.",
       inputSchema: {
         ticket_number: z.string().optional().describe("Ticket.number (the 6-digit human reference); supply this OR ticket_id"),

@@ -52,9 +52,11 @@ export function registerTicketOperationTools(server: McpServer): void {
     {
       title: "Restore a deleted ticket",
       description:
-        "Undo a delete: the ticket comes back with the responses deleted with it, as they were: they start no " +
-        "automations, SLA timing, satisfaction survey, Axial reply or out-of-office reply. From an Axial agent task's " +
-        "token, a restore that would bring back public responses the ticket's customer can read is not carried " +
+        "Undo a delete: the ticket (or task) comes back, into the queue it was in, with the messages or notes deleted " +
+        "with it, as they were: they start no automations, SLA timing, satisfaction survey, Axial reply or " +
+        "out-of-office reply. Refused (422) when that queue no longer exists or now holds the other kind (a ticket " +
+        "comes back only to a ticket queue, a task only to a task queue). From an Axial agent task's " +
+        "token, a restore that would bring back public messages the ticket's customer can read is not carried " +
         "out: a task with a ticket gets a 202 with status awaiting_approval and an approval card for a member of " +
         "staff; a task with no ticket, and a reply task, which only reads, get a 403. Requires tickets:write.",
       inputSchema: { ticket_number: z.string().describe("Number of the deleted ticket") },
@@ -65,14 +67,16 @@ export function registerTicketOperationTools(server: McpServer): void {
   server.registerTool(
     "merge_tickets",
     {
-      title: "Merge two tickets",
+      title: "Merge two tickets (or two tasks)",
       description:
-        "Merge two tickets, as the ticket browser's Merge: the OLDER ticket survives; the newer one's " +
-        "participants and responses (with attachments) are copied into it and the newer ticket is deleted, " +
-        "marked as merged. The copies start no automations, SLA timing, satisfaction survey, Axial reply or " +
+        "Merge two tickets, or two tasks, as the ticket browser's Merge: the OLDER one survives; the newer one's " +
+        "participants and messages or notes (with attachments) are copied into it and the newer one is deleted, " +
+        "marked as merged. A ticket and a task are never merged (422, error 'refused'). The copies start no " +
+        "automations, SLA timing, satisfaction survey, Axial reply or " +
         "out-of-office reply; a survivor with no first response takes its earliest public staff reply, copies " +
-        "included. The result names the survivor. From an Axial agent task's token, a merge that would " +
-        "add anyone not on the staff to the surviving ticket, or show the other ticket's public responses to its " +
+        "included, and a surviving task with no description takes its first note, copied or its own. The result " +
+        "names the survivor. From an Axial agent task's token, a merge that would " +
+        "add anyone not on the staff to the surviving ticket, or show the other ticket's public messages to its " +
         "customer, is not carried out: a task with a ticket gets a 202 with status awaiting_approval and an " +
         "approval card for a member of staff; a reply task, which only reads, gets a 403. Requires tickets:write " +
         "and managing both queues.",
@@ -90,9 +94,9 @@ export function registerTicketOperationTools(server: McpServer): void {
     {
       title: "Link tickets",
       description:
-        "Link a ticket to one or more others (the ticket page's Linked panel) - a real relationship, not a " +
-        "link in a response body. Linking an already-linked pair does nothing. Requires tickets:write and " +
-        "sight of every ticket.",
+        "Link a ticket or task to one or more others, of either kind (the ticket page's Linked panel) - a real " +
+        "relationship, not a link in a message body. Linking an already-linked pair does nothing. Requires " +
+        "tickets:write and sight of every one of them (403 naming one the token owner cannot see).",
       inputSchema: {
         ...ticketRef,
         linked_ticket_numbers: z.array(z.string()).min(1).max(100).describe("Tickets to link it to"),
@@ -105,7 +109,9 @@ export function registerTicketOperationTools(server: McpServer): void {
     "unlink_tickets",
     {
       title: "Unlink two tickets",
-      description: "Remove the link between two tickets. Clone links are permanent and can't be removed. Requires tickets:write.",
+      description:
+        "Remove the link between two tickets (or a ticket and a task). Clone links are permanent and can't be " +
+        "removed. Requires tickets:write and sight of both ends.",
       inputSchema: { ...ticketRef, linked_ticket_number: z.string().describe("The linked ticket to unlink") },
     },
     async (args) => toToolResult(await callV1("tickets/unlink", compact({ ...(args as Record<string, unknown>) }))),
@@ -124,9 +130,9 @@ export function registerTicketOperationTools(server: McpServer): void {
   server.registerTool(
     "get_response",
     {
-      title: "Get one response by id",
+      title: "Get one message or note by id",
       description:
-        "Read a single response by its response_id alone - with its ticket number, flags, audit and " +
+        "Read a single response (a ticket's message or a task's note) by its response_id alone - with its ticket number, flags, audit and " +
         "attachments - when you don't know which ticket it is on. Always says is_email_sourced and mail_auth " +
         "(what the receiving mail server concluded about the From address: pass, fail, or null; api when it was " +
         "posted through the API in the sender's name, so nothing checked the address). include " +
@@ -150,12 +156,18 @@ export function registerTicketOperationTools(server: McpServer): void {
     server.registerTool(
       name,
       {
-        title: `${verb} responses to another ticket`,
+        title: `${verb} messages or notes to another ticket or task`,
         description:
-          `${verb} responses onto another ticket: each is re-created there (author, flags, timestamps, ` +
-          `attachments)` +
+          `${verb} responses onto another entry of the same kind: a ticket's messages onto another ticket, a ` +
+          `task's notes onto another task (between a ticket and a task: 422, error 'refused'). Each is re-created ` +
+          `there (author, flags, timestamps, attachments)` +
           (verb === "Move" ? " and the original deleted" : "") +
-          ". Both tickets record it. The copies are not new messages on the target: they start no automations, " +
+          ". Both record it." +
+          (verb === "Move"
+            ? " A move never takes a task's description (get_ticket: is_task_description) off its task, nor the " +
+              "last message or note off its ticket or task (422)."
+            : "") +
+          " The copies are not new messages on the target: they start no automations, " +
           "SLA timing, satisfaction survey, Axial reply or out-of-office reply, and a copied staff reply is not the " +
           "target's first response. For repairing a mis-split thread or a botched clone. Requires tickets:write" +
           (verb === "Move" ? " and managing both queues." : " and managing the target's queue.") +
@@ -164,8 +176,8 @@ export function registerTicketOperationTools(server: McpServer): void {
           "awaiting_approval and an approval card for a member of staff; a reply task, which only reads, gets a " +
           "403. Between two tickets of the same customer it goes straight through.",
         inputSchema: {
-          response_ids: z.array(z.number().int()).min(1).max(500).describe("Response ids, in the order to place them"),
-          target_ticket_number: z.string().describe("The ticket to put them on"),
+          response_ids: z.array(z.number().int()).min(1).max(500).describe("Response ids (messages or notes), in the order to place them"),
+          target_ticket_number: z.string().describe("The ticket (or task) to put them on: the same kind as their source"),
         },
       },
       async ({ response_ids, target_ticket_number }) =>
@@ -176,17 +188,21 @@ export function registerTicketOperationTools(server: McpServer): void {
   server.registerTool(
     "split_ticket",
     {
-      title: "Split responses off into a new ticket",
+      title: "Split messages or notes off into a new ticket or task",
       description:
         "Move (or, with copy: true, copy) responses of one ticket onto a NEW ticket with the given subject, " +
-        "linked to the original as its clone and carrying its originator and participants. Its responses are " +
+        "linked to the original as its clone and carrying its originator and participants. The new entry is the " +
+        "source's kind: a ticket's messages make a ticket and a task's notes a task, so `queue` must be a queue " +
+        "of that kind and not Drafts (422, error 'refused'). A move never takes a task's description off its task, " +
+        "nor every message or note off the source, which keeps at least one (422). A new task's description is its " +
+        "first copied note. Its messages or notes are " +
         "copies, so they start no automations, satisfaction survey, Axial reply or out-of-office reply, but the new " +
         "ticket gets its SLA policy (a task has none) and its first response is the earliest public staff reply " +
         "split off with it. Requires tickets:write and managing the source queue.",
       inputSchema: {
-        response_ids: z.array(z.number().int()).min(1).max(500).describe("Responses to split off (all from one ticket)"),
-        subject: z.string().max(255).describe("Subject of the new ticket"),
-        queue: z.string().optional().describe("Queue for the new ticket (default: the source's)"),
+        response_ids: z.array(z.number().int()).min(1).max(500).describe("Messages or notes to split off (all from one ticket or task)"),
+        subject: z.string().max(255).describe("Subject of the new ticket or task"),
+        queue: z.string().optional().describe("Queue for the new entry (default: the source's); a queue of the source's kind"),
         copy: z.boolean().optional().describe("Copy instead of move"),
       },
     },

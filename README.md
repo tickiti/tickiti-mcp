@@ -18,7 +18,7 @@ general tools, so the whole surface is available without a separate tool per end
 
 | Tool | Ability | Purpose |
 |---|---|---|
-| `create_ticket` | `tickets:write` | Open a ticket (subject+content, template, or intervention), with assignee, priority, status and participants, and a contact form's `customer_name`, `company` and `other_fields`; `is_public` is required |
+| `create_ticket` | `tickets:write` | Open a ticket (subject+content, template, or intervention), with assignee, priority, status and participants, and a contact form's `customer_name`, `company` and `other_fields`; `is_public` is required; `kind: 'task'` opens a task in a task queue instead |
 | `respond_to_ticket` | `tickets:write` | Post a response; change status, hold, assignee, priority, queue, subject, participants; `send_full_email` for the whole reply by email; `signature` / `signature_custom` |
 | `close_ticket` | `tickets:write` | Close, optionally with a final reply (and its signature) and a resolution |
 | `edit_response` | `tickets:write` | Change a response in place (whole body, find/replace, visibility) with no notification — or publish an internal note and notify |

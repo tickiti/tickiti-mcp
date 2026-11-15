@@ -84,24 +84,39 @@ export function registerTicketTools(server: McpServer): void {
   server.registerTool(
     "create_ticket",
     {
-      title: "Create ticket",
+      title: "Create a ticket or task",
       description:
-        "Create a support ticket. Provide originator_email_address and EXACTLY ONE of: " +
+        "Create a support ticket or, with kind: 'task', a task (staff work: its notes are never shown to a customer). " +
+        "Provide originator_email_address and EXACTLY ONE of: " +
         "subject+content, OR template_identifier+data, OR intervention+data+uid. " +
         "Omit queue_name to use the Inbox; queue_name is not allowed with intervention. " +
-        "is_public is REQUIRED: true = the opening response is customer-visible, false = a staff-only internal note. " +
+        "An entry is a ticket or a task for life: a ticket goes only in a ticket queue and a task only in a task " +
+        "queue (list_queues gives each queue's content_type), never in Drafts, so a task needs queue_name naming a " +
+        "task queue (Inbox holds tickets); a queue of the other kind is refused (422, errors.queue). A task also " +
+        "refuses (422) is_public true (pass false: its first note is internal whatever is sent), intervention and " +
+        "uid, customer_name / company / other_fields, and use_passed_originator_as_responder unless the originator " +
+        "is the token owner and a member of staff. The result carries `kind`. " +
+        "is_public is REQUIRED: true = the opening message is customer-visible, false = a staff-only internal note. " +
         "You can set the assignee, priority, status and extra participants at creation, and give a contact form's " +
         "customer_name, company and other_fields. " +
         "The result's `queue` is where the ticket actually landed (with rerouted/reroute_reason if a routing rule moved it), " +
         "and tag_warnings lists any @tag that matched nobody (posted as plain text; pass strict_tags to refuse instead). " +
-        "use_passed_originator_as_responder (posting the opening response as an originator other than the token " +
+        "use_passed_originator_as_responder (posting the opening message as an originator other than the token " +
         "owner) needs a key holding tickets:customer_impersonation, which only a System or API-user key can have; " +
         "it is refused (422, errors.use_passed_originator_as_responder) for an internal originator (a staff, " +
-        "mailbox or system address, or one in the installation's own domains), with is_public false, and with " +
-        "intervention or uid. Such a response is never staff, its sender is marked unverified ('api'), and an " +
+        "mailbox or system address, or one in the installation's own domains), with is_public false, with " +
+        "intervention or uid, and on a task. Such a message is never staff, its sender is marked unverified ('api'), and an " +
         "internal note records which key posted it.",
       inputSchema: {
         originator_email_address: z.string().email(),
+        kind: z
+          .enum(["ticket", "task"])
+          .optional()
+          .describe(
+            "What to create (default 'ticket'), fixed for life. A task must go to a task queue (queue_name; list_queues " +
+              "content_type 'task'), with is_public false, and takes no intervention/uid, customer_name, company, " +
+              "other_fields or posting in someone else's name.",
+          ),
         subject: z.string().optional().describe("Pair with content (subject+content path)"),
         content: z.string().optional().describe("HTML body; pair with subject"),
         content_path: contentPathShape,
@@ -149,6 +164,7 @@ export function registerTicketTools(server: McpServer): void {
       const body: Record<string, unknown> = {
         originator_email_address: a.originator_email_address,
       };
+      if (a.kind !== undefined) body.kind = a.kind;
       if (a.is_public !== undefined) body.is_public = a.is_public;
       if (a.use_passed_originator_as_responder !== undefined) {
         body.use_passed_originator_as_responder = a.use_passed_originator_as_responder;
@@ -206,12 +222,14 @@ export function registerTicketTools(server: McpServer): void {
     {
       title: "Respond to ticket",
       description:
-        "Add a response to an existing ticket. Set is_internal=true for a staff-only note. " +
+        "Add a message to an existing ticket, or a note to a task. Set is_internal=true for a staff-only note; " +
+        "everything posted on a task is a staff-only note whatever is_internal says. " +
         "You can change ticket attributes in the same call: status ('open' | 'on-hold' | " +
         "'closed'), on_hold_until (YYYY-MM-DD, required with 'on-hold'), assigned_to_email " +
         "(staff email, a team key 'team:<id>' from list_teams, or 'Unassigned'), priority " +
         "(Low|Normal|High|Urgent or 10|20|30|40), resolved " +
-        "(resolution-category id or name), queue (move the ticket to a queue by name), subject " +
+        "(resolution-category id or name), queue (move the ticket to a queue by name: a ticket only to another " +
+        "ticket queue and a task only to another task queue, never Drafts; else 422, errors.queue), subject " +
         "(rename the ticket), and add_participants / remove_participants. " +
         "With no status given, a PUBLIC reply reopens a closed/on-hold ticket (keep_status: true stops it); an " +
         "internal note or an attribute-only change leaves the status and any hold date alone. on_hold_until on its own " +
@@ -225,7 +243,7 @@ export function registerTicketTools(server: McpServer): void {
         "place {{attach:<name>}} tokens in `content` where each image should appear. " +
         "To attach downloadable files of any type, pass `files` as local file paths. " +
         "Identify the ticket by ticket_number OR ticket_id (internal DB id) — supply exactly one. " +
-        "To close a ticket, prefer close_ticket; to edit an existing response, use edit_response. " +
+        "To close a ticket, prefer close_ticket; to edit an existing message or note, use edit_response. " +
         "from_email: a person's token always posts as its owner (another address is replaced by the owner's and " +
         "reported as from_email_replaced). A System or API-user key may post as a member of staff or a system " +
         "address; posting as a customer needs a key holding tickets:customer_impersonation (else 422, " +
@@ -251,7 +269,7 @@ export function registerTicketTools(server: McpServer): void {
         content: z
           .string()
           .optional()
-          .describe("Response body (HTML). Optional only when a status/attribute change is supplied."),
+          .describe("The message or note body (HTML). Optional only when a status/attribute change is supplied."),
         content_path: contentPathShape,
         is_internal: z.boolean().optional(),
         send_full_email: z
@@ -288,7 +306,10 @@ export function registerTicketTools(server: McpServer): void {
         queue: z
           .string()
           .optional()
-          .describe("Move the ticket to this queue (TicketQueue.name; must exist). Use list_queues for names."),
+          .describe(
+            "Move the ticket to this queue (TicketQueue.name; must exist). A ticket moves only to a ticket queue and a task " +
+              "only to a task queue, never to Drafts (list_queues gives names and content_type).",
+          ),
         subject: z
           .string()
           .optional()
@@ -331,9 +352,10 @@ export function registerTicketTools(server: McpServer): void {
     {
       title: "Close (and optionally resolve) a ticket",
       description:
-        "Close a ticket. Optionally pass content to post a final reply as it closes, and " +
-        "resolved (resolution-category id or name) to record the resolution, queue (move the " +
-        "ticket to a queue by name) and subject (rename). On a queue that tracks resolutions, " +
+        "Close a ticket or task. Optionally pass content to post a final reply (a note, on a task) as it closes, and " +
+        "resolved (resolution-category id or name) to record the resolution, queue (move it to a queue by name: " +
+        "a ticket only to a ticket queue and a task only to a task queue, never Drafts; else 422, errors.queue) " +
+        "and subject (rename). On a queue that tracks resolutions, " +
         "`resolved` is required (list_resolutions gives the categories). signature / signature_custom " +
         "choose the closing reply's signature, as on respond_to_ticket. from_email is " +
         "optional — defaults to the token owner, and follows respond_to_ticket's rules (a customer's address " +
@@ -344,9 +366,9 @@ export function registerTicketTools(server: McpServer): void {
         ticket_id: z.union([z.string(), z.number()]).optional().describe("Ticket.id (internal DB id)"),
         from_email: z.string().email().optional().describe("Author email; defaults to the token owner"),
         content: z.string().optional().describe("Optional closing reply body (HTML)"),
-        is_internal: z.boolean().optional().describe("Post the closing note as staff-only (default public if content given)"),
+        is_internal: z.boolean().optional().describe("Post the closing message as staff-only (default public if content given; on a task it is always a staff-only note)"),
         resolved: z.string().optional().describe("Resolution category id or name (resolution-tracking plan)"),
-        queue: z.string().optional().describe("Move the ticket to this queue (TicketQueue.name; must exist)."),
+        queue: z.string().optional().describe("Move it to this queue (TicketQueue.name; must exist, and hold the same kind: ticket or task)."),
         subject: z.string().optional().describe("Rename the ticket to this subject."),
         signature: signatureShape,
         signature_custom: signatureCustomShape,
@@ -358,20 +380,22 @@ export function registerTicketTools(server: McpServer): void {
   server.registerTool(
     "edit_response",
     {
-      title: "Edit a response in place (no notification)",
+      title: "Edit a message or note in place (no notification)",
       description:
-        "Change an existing response in place: replace its body (content / content_path), edit " +
-        "part of it (replace: find/replace pairs against the stored body - no need to send the " +
+        "Change an existing response (a ticket's message or a task's note) in place: replace its body (content / " +
+        "content_path), edit part of it (replace: find/replace pairs against the stored body - no need to send the " +
         "whole thing back), and/or change whether it is internal. Sends NO notification - the " +
         "way to silently fix content already on a ticket - unless notify: true with is_internal: " +
         "false, which publishes an internal note and tells the customer (the ticket page's 'Change " +
-        "to public'). Demoting a public response does NOT unsend it. A customer's response can " +
+        "to public'). Demoting a public message does NOT unsend it. A customer's message can " +
         "have its visibility corrected (is_internal alone) but its body is never rewritten; " +
-        "audit-only rows have no body. Get the response_id from get_ticket / get_response. " +
+        "audit lines have no body. A note on a task is never made public: is_internal false on a task is refused " +
+        "(422, errors.is_internal). A task's description (get_ticket: is_task_description) can be edited but not " +
+        "emptied (422, under content or replace). Get the response_id from get_ticket / get_response. " +
         "Requires tickets:write.",
       inputSchema: {
-        response_id: z.union([z.string(), z.number()]).describe("Response.id to change"),
-        content: z.string().optional().describe("New response body (HTML). Inline data: images are extracted to attachments."),
+        response_id: z.union([z.string(), z.number()]).describe("Response.id to change (a message or note)"),
+        content: z.string().optional().describe("New body (HTML). Inline data: images are extracted to attachments."),
         content_path: contentPathShape,
         replace: z
           .array(
@@ -383,8 +407,11 @@ export function registerTicketTools(server: McpServer): void {
           )
           .optional()
           .describe("Edits to the stored body, applied in order. Exclusive with content."),
-        is_internal: z.boolean().optional().describe("Set the response's visibility: true = staff-only note, false = visible to the customer."),
-        notify: z.boolean().optional().describe("With is_internal: false on an internal response: publish it AND notify the customer."),
+        is_internal: z
+          .boolean()
+          .optional()
+          .describe("Set the visibility: true = staff-only note, false = visible to the customer (refused on a task)."),
+        notify: z.boolean().optional().describe("With is_internal: false on an internal message: publish it AND notify the customer."),
       },
     },
     async ({ response_id, content, content_path, replace, is_internal, notify }) =>
@@ -400,12 +427,15 @@ export function registerTicketTools(server: McpServer): void {
   server.registerTool(
     "delete_response",
     {
-      title: "Delete a response",
+      title: "Delete a message or note",
       description:
-        "Soft-delete a response by id. Get the response_id from get_ticket / list_responses. " +
-        "Requires tickets:write.",
+        "Soft-delete a response (a ticket's message or a task's note) by id; restore_response undoes it. " +
+        "Refused (422, error 'refused') for a task's description (get_ticket: is_task_description) and for the " +
+        "last message or note on its ticket or task: every ticket or task keeps at least one (audit lines do not " +
+        "count). Only its author, an admin or the queue's manager may delete it (403). Get the response_id from " +
+        "get_ticket / list_responses. Requires tickets:write.",
       inputSchema: {
-        response_id: z.union([z.string(), z.number()]).describe("Response.id to delete"),
+        response_id: z.union([z.string(), z.number()]).describe("Response.id to delete (a message or note)"),
       },
     },
     async ({ response_id }) =>
@@ -458,7 +488,7 @@ export function registerTicketTools(server: McpServer): void {
         "via search_object for a direct lookup (several numbers in one ticket_number criterion " +
         "return those tickets). An unknown mode is refused. get_search_modes lists the vocabulary. " +
         "With a subject, content or subject_content criterion, a member of staff's rows carry `matches`: " +
-        "for each word, where it was found (the subject, a response with its author, date and the text " +
+        "for each word, where it was found (the subject, a message or note with its author, date and the text " +
         "around the word, or a tag comment). A ticket keeps the subject of the message that opened it, " +
         "so read the matches, not the subject, to tell what a ticket is about.",
       inputSchema: {

@@ -842,7 +842,7 @@ export const BODY_FIELDS: Record<string, BodyFields> = {
       "max_consecutive_errors": "required|integer|min:1",
       "name": "required|string|max:255|unique:mailboxes,name",
       "outgoing_mailbox_type": "required|string|in:none,smtp,gmail,ttmail",
-      "pop_disposition_queue": "nullable|string|max:255",
+      "pop_disposition_queue": "nullable|string|max:255|custom check",
       "pop_enable": "required|boolean",
       "pop_encryption": "required|string|in:ssl,tls,starttls,none",
       "pop_frequency_minutes": "nullable|integer|min:1",
@@ -1647,6 +1647,7 @@ export const BODY_FIELDS: Record<string, BodyFields> = {
       "attachments.*.name": "required_with:attachments|string|max:255",
       "attachments.*.sha256": "required_with:attachments|string",
       "company": "nullable|string|max:255",
+      "customer_message": "nullable|string|max:65535",
       "customer_name": "nullable|string|max:255",
       "data": "nullable|array",
       "data.assigned_to_email": "nullable|string|custom check",
@@ -1659,6 +1660,7 @@ export const BODY_FIELDS: Record<string, BodyFields> = {
       "data.template_identifier": "?",
       "intervention": "nullable|string",
       "is_public": "nullable|boolean",
+      "kind": "nullable|string|in:…",
       "originator_email_address": "required|string|email",
       "other_fields": "nullable|array",
       "other_fields.*.label": "required_with:other_fields|string|max:255",
@@ -2398,6 +2400,7 @@ export const BODY_FIELDS: Record<string, BodyFields> = {
   "api.v1.workflow.interventions.create": {
     "fields": {
       "assign_to_email": "nullable|string|max:255",
+      "axial_note": "nullable|string|max:2000",
       "completion_queue_name": "nullable|string|max:255",
       "create_urgent": "required|boolean",
       "fields": "nullable|array",
@@ -2444,6 +2447,7 @@ export const BODY_FIELDS: Record<string, BodyFields> = {
   "api.v1.workflow.interventions.update": {
     "fields": {
       "assign_to_email": "nullable|string|max:255",
+      "axial_note": "nullable|string|max:2000",
       "completion_queue_name": "nullable|string|max:255",
       "create_urgent": "boolean",
       "fields": "nullable|array",

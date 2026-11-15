@@ -141,6 +141,24 @@ try {
     assert.equal(b.data.customer_name, undefined);
   });
 
+  await ok("create_ticket sends kind at the top level, and refuses a kind Tickiti does not have", async () => {
+    await call("create_ticket", {
+      originator_email_address: "s@example.com", subject: "T", content: "<p>Do it</p>", is_public: false,
+      kind: "task", queue_name: "Tasks",
+    });
+    const b = seen.at(-1).body;
+    assert.equal(seen.at(-1).url, "/api/v1/tickets");
+    assert.equal(b.kind, "task");
+    assert.equal(b.queue_name, "Tasks");
+    assert.equal(b.data.kind, undefined);
+    const before = seen.length;
+    const bad = await call("create_ticket", {
+      originator_email_address: "s@example.com", subject: "T", content: "<p>x</p>", is_public: false, kind: "note",
+    });
+    assert.equal(bad.isError, true);
+    assert.equal(seen.length, before);
+  });
+
   await ok("create_template takes category, subcategory and keywords", async () => {
     await call("create_template", { type: "email", identifier: "t1", category: "A", subcategory: "B", keywords: "k" });
     assert.deepEqual(seen.at(-1).body, { type: "email", identifier: "t1", category: "A", subcategory: "B", keywords: "k" });

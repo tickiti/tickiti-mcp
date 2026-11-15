@@ -35,7 +35,9 @@ export function registerTicketPlanningTools(server: McpServer): void {
         "manages the to-queue; an assignee change needs manage on the target queue unless the new assignee manages " +
         "it (a team manages a queue if any member does; Unassigned manages nothing); status, priority, hold date and " +
         "resolution need manage on the target queue, except that the current assignee (in person or via the team) " +
-        "may close with a resolution; start/due dates need manage or being the personal assignee. Locked tickets, " +
+        "may close with a resolution; start/due dates need manage or being the personal assignee. A queue change " +
+        "keeps each entry's kind: a ticket moves only to a ticket queue and a task only to a task queue, never to " +
+        "Drafts, so in a selection of both the ones of the other kind are refused. Locked tickets, " +
         "tickets the owner has a draft on, Alert tickets, and closing on a queue that tracks resolutions without one " +
         "are refused. A ticket that does not exist and one the owner cannot see get the same reason ('no such " +
         "ticket, or not one the token owner can see'). Use dry_run first to see what would change. Find the " +
@@ -158,9 +160,11 @@ export function registerTicketPlanningTools(server: McpServer): void {
   server.registerTool(
     "pin_response",
     {
-      title: "Pin or unpin a response",
+      title: "Pin or unpin a message or note",
       description:
-        "Pin a response to the top of its ticket (pinned: true) or unpin it. Needs sight of the ticket; a " +
+        "Pin a response (a ticket's message or a task's note) to the top of its ticket or task (pinned: true) or " +
+        "unpin it. A task's description is always pinned and listed above any other pinned note: unpinning it is " +
+        "refused (422, error 'refused'). Needs sight of the ticket; a " +
         "deleted response cannot be pinned. Returns is_pinned and whether it changed. Requires tickets:write.",
       inputSchema: {
         response_id: z.number().int(),
@@ -173,10 +177,10 @@ export function registerTicketPlanningTools(server: McpServer): void {
   server.registerTool(
     "restore_response",
     {
-      title: "Restore a deleted response",
+      title: "Restore a deleted message or note",
       description:
         "Undo delete_response. Allowed only to an admin or a member of staff who manages the ticket's queue (403 " +
-        "for anyone else, the response's author included). The ticket records who restored it; nobody is notified. Refused " +
+        "for anyone else, the author included). The ticket records who restored it; nobody is notified. Refused " +
         "when the response is not deleted or its ticket is (restore_ticket first). Find deleted responses with " +
         "query_responses include_deleted: true (rows carry `deleted`). Requires tickets:write.",
       inputSchema: { response_id: z.number().int() },
@@ -246,7 +250,7 @@ export function registerTicketPlanningTools(server: McpServer): void {
       title: "Get a ticket's share link",
       description:
         "The ticket's permanent share link, as the page's Copy link, created on first request (created: true). With " +
-        "response_id the link opens at that response. Not for a task ticket. Needs sight of the ticket. Requires " +
+        "response_id the link opens at that message. Not for a task, which a share link does not open (refused). Needs sight of the ticket. Requires " +
         "tickets:write (it may create the link).",
       inputSchema: {
         ...ticketRef,
@@ -301,7 +305,8 @@ export function registerTicketPlanningTools(server: McpServer): void {
         "Tickets the mail fetcher opened from an email it flagged for a person (the Review page): the sender is not a " +
         "participant (non_party_response), a duplicate, or the sender already has an open ticket (existant). Newest " +
         "first, only those whose new ticket the owner can see; existing_ticket is null (state 'hidden' or 'gone') " +
-        "when the owner cannot see it. can_keep / can_merge say what resolve_review would allow. ticket_number " +
+        "when the owner cannot see it. can_keep / can_merge say what resolve_review would allow (can_merge is false " +
+        "when the existing entry is a task). ticket_number " +
         "matches the new ticket or the existing one. Requires tickets:read.",
       inputSchema: {
         reason: z.enum(["non_party_response", "duplicate", "existant"]).optional(),
@@ -318,10 +323,11 @@ export function registerTicketPlanningTools(server: McpServer): void {
     {
       title: "Keep or merge a reviewed inbound email",
       description:
-        "Resolve one review (list_reviews). keep: the new ticket stays its own ticket; needs sight of it. merge: the " +
-        "new ticket's email, attachments and participants go onto the existing ticket (reopened if on hold, its " +
-        "assignee notified) and the new ticket is deleted; needs sight of the existing ticket and manage on BOTH " +
-        "tickets' queues. Refused when the new ticket has more than one response (use merge_tickets). From an Axial " +
+        "Resolve one review (list_reviews). keep: the new ticket stays its own ticket; needs sight of it. merge: " +
+        "every message on the new ticket, oldest first, with its attachments, and its participants go onto the " +
+        "existing ticket (reopened if on hold, its assignee notified) and the new ticket is deleted; needs sight " +
+        "of the existing ticket and manage on BOTH tickets' queues. Refused (422) when the existing entry is a " +
+        "task: a ticket and a task are never merged, so keep it instead. From an Axial " +
         "agent task's token, a merge that would add anyone not on the staff to the existing ticket (the sender of a " +
         "non_party_response, say) is not carried out, as participants/add is not: a task with a ticket gets a 202 " +
         "with status awaiting_approval and an approval card for a member of staff; a reply task, which only reads, " +
