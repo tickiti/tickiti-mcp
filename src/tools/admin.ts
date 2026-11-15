@@ -85,7 +85,9 @@ export function registerAdminTools(server: McpServer): void {
       description:
         "Upload a local image file for a template, FAQ or stock response and get back its cid reference and " +
         "an <img> tag to place in the content (then update_template / update_stock_response). The bytes " +
-        "never pass through the model. Stock responses need settings:write; other templates templates:write.",
+        "never pass through the model. Stock responses need settings:write; other templates templates:write. " +
+        "From Axial (an agent task's token, or a call Axial makes itself), an image for an email, notification, " +
+        "intervention or FAQ template is refused with a 403: those go to customers with nobody approving each one.",
       inputSchema: {
         template_id: z.union([z.string(), z.number()]).describe("Template.id (or stock response id)"),
         path: z.string().describe("Local image file"),

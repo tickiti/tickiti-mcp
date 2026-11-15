@@ -186,8 +186,10 @@ export function registerAccountTools(server: McpServer): void {
         "responses have none). get: exists, stale (the English changed since), subject, legend, content and the " +
         "English; with no variant yet the English is given as the starting point. update: creates or changes the " +
         "variant; fields left out keep their values (a new one needs content, and a subject unless it is a " +
-        "notification); stamped against the current English. delete: the English is untouched. Requires an admin " +
-        "owner and templates:read (get) or templates:write.",
+        "notification); stamped against the current English. delete: the English is untouched. From Axial (an " +
+        "agent task's token, or a call Axial makes itself), update and delete are refused with a 403: a " +
+        "translation is what those customers are sent, with nobody approving each one, so say what you would " +
+        "change, for an administrator to do. Requires an admin owner and templates:read (get) or templates:write.",
       inputSchema: {
         action: z.enum(["get", "update", "delete"]),
         template_id: z.number().int(),

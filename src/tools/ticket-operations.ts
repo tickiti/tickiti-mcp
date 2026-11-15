@@ -52,7 +52,8 @@ export function registerTicketOperationTools(server: McpServer): void {
     {
       title: "Restore a deleted ticket",
       description:
-        "Undo a delete: the ticket comes back with the responses deleted with it. From an Axial agent task's " +
+        "Undo a delete: the ticket comes back with the responses deleted with it, as they were: they start no " +
+        "automations, SLA timing, satisfaction survey, Axial reply or out-of-office reply. From an Axial agent task's " +
         "token, a restore that would bring back public responses the ticket's customer can read is not carried " +
         "out: a task with a ticket gets a 202 with status awaiting_approval and an approval card for a member of " +
         "staff; a task with no ticket, and a reply task, which only reads, get a 403. Requires tickets:write.",
@@ -68,7 +69,9 @@ export function registerTicketOperationTools(server: McpServer): void {
       description:
         "Merge two tickets, as the ticket browser's Merge: the OLDER ticket survives; the newer one's " +
         "participants and responses (with attachments) are copied into it and the newer ticket is deleted, " +
-        "marked as merged. The result names the survivor. From an Axial agent task's token, a merge that would " +
+        "marked as merged. The copies start no automations, SLA timing, satisfaction survey, Axial reply or " +
+        "out-of-office reply; a survivor with no first response takes its earliest public staff reply, copies " +
+        "included. The result names the survivor. From an Axial agent task's token, a merge that would " +
         "add anyone not on the staff to the surviving ticket, or show the other ticket's public responses to its " +
         "customer, is not carried out: a task with a ticket gets a 202 with status awaiting_approval and an " +
         "approval card for a member of staff; a reply task, which only reads, gets a 403. Requires tickets:write " +
@@ -152,7 +155,9 @@ export function registerTicketOperationTools(server: McpServer): void {
           `${verb} responses onto another ticket: each is re-created there (author, flags, timestamps, ` +
           `attachments)` +
           (verb === "Move" ? " and the original deleted" : "") +
-          ". Both tickets record it. For repairing a mis-split thread or a botched clone. Requires tickets:write" +
+          ". Both tickets record it. The copies are not new messages on the target: they start no automations, " +
+          "SLA timing, satisfaction survey, Axial reply or out-of-office reply, and a copied staff reply is not the " +
+          "target's first response. For repairing a mis-split thread or a botched clone. Requires tickets:write" +
           (verb === "Move" ? " and managing both queues." : " and managing the target's queue.") +
           " From an Axial agent task's token, a public response that would land where someone not on the staff " +
           "could not already read it is not carried out: a task with a ticket gets a 202 with status " +
@@ -174,8 +179,10 @@ export function registerTicketOperationTools(server: McpServer): void {
       title: "Split responses off into a new ticket",
       description:
         "Move (or, with copy: true, copy) responses of one ticket onto a NEW ticket with the given subject, " +
-        "linked to the original as its clone and carrying its originator and participants. Requires " +
-        "tickets:write and managing the source queue.",
+        "linked to the original as its clone and carrying its originator and participants. Its responses are " +
+        "copies, so they start no automations, satisfaction survey, Axial reply or out-of-office reply, but the new " +
+        "ticket gets its SLA policy (a task has none) and its first response is the earliest public staff reply " +
+        "split off with it. Requires tickets:write and managing the source queue.",
       inputSchema: {
         response_ids: z.array(z.number().int()).min(1).max(500).describe("Responses to split off (all from one ticket)"),
         subject: z.string().max(255).describe("Subject of the new ticket"),
@@ -193,7 +200,11 @@ export function registerTicketOperationTools(server: McpServer): void {
       description:
         "Change a ticket's originator (raised-by) - e.g. one raised under the wrong one of a person's " +
         "addresses. The new address becomes a participant; the old one stays a participant (remove it " +
-        "separately if needed). Recorded on the thread. Requires tickets:write and managing the queue.",
+        "separately if needed). Recorded on the thread. From an Axial agent task's token, a new originator who " +
+        "is not a member of staff and not already on the ticket is not set (they would get every public reply and " +
+        "could open the whole history): a task with a ticket, or one naming the ticket by ticket_number, gets a " +
+        "202 with status awaiting_approval and an approval card for a member of staff; a reply task, which only " +
+        "reads, gets a 403. Requires tickets:write and managing the queue.",
       inputSchema: { ...ticketRef, originator_email: z.string().email().describe("The new originator") },
     },
     async (args) => toToolResult(await callV1("tickets/originator-update", compact({ ...(args as Record<string, unknown>) }))),

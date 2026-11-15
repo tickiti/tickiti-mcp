@@ -128,7 +128,10 @@ export function registerSettingsWriteTools(server: McpServer): void {
         "data: images are extracted to attachments. Text fields other than content are limited to " +
         "255 characters. FAQ identifiers are immutable. category and subcategory are kept only on a " +
         "stock response (type stock-response; update_stock_response is the tool for those): on any other " +
-        "type Tickiti stores them empty, whatever is sent. Requires templates:write.",
+        "type Tickiti stores them empty, whatever is sent. From Axial (an agent task's token, or a call Axial " +
+        "makes itself), a change to an email, notification, intervention or FAQ template is refused with a 403 " +
+        "and nothing is saved: those go to customers with nobody approving each one, so say what you would " +
+        "change, for an administrator to do. A person's own token is unaffected. Requires templates:write.",
       inputSchema: {
         id: z.union([z.string(), z.number()]).describe("Template.id"),
         identifier: z.string().max(255).optional().describe("Template identifier (ignored for FAQs)"),
@@ -158,7 +161,11 @@ export function registerSettingsWriteTools(server: McpServer): void {
         "Create an email/notification template or FAQ. The fields sent are stored (subject, content, " +
         "description, keywords, ...), except category and subcategory, which are kept only on a stock " +
         "response (type stock-response; create_stock_response is the tool for those) and stored empty on " +
-        "any other type. is_enabled: false creates it as a disabled draft. Requires templates:write.",
+        "any other type. is_enabled: false creates it as a disabled draft. From Axial (an agent task's token, or " +
+        "a call Axial makes itself), creating an email, notification, intervention or FAQ template is refused with " +
+        "a 403 (a type in lookalike characters, such as full-width letters or a zero-width space, counts as the " +
+        "real one): those go to customers with nobody approving each one, so say what you would make, for an " +
+        "administrator to do. A person's own token is unaffected. Requires templates:write.",
       inputSchema: {
         type: z.string().describe("e.g. 'email', 'notification', 'faq'"),
         identifier: z.string().max(255).optional().describe("Required except for FAQs"),

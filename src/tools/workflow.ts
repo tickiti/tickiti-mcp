@@ -85,7 +85,16 @@ export function registerWorkflowTools(server: McpServer): void {
         "delete: the rule and its run history. test: a dry run against a ticket the owner can see, of a saved rule " +
         "(id), an unsaved one (event + conditions + actions) or a saved one with parts replaced; changes nothing. " +
         "runs: a rule's latest 25 runs. An add_participant action takes a member of staff's exact address only; " +
-        "a reply action must name an existing stock response. From Axial, a rule that replies to customers cannot " +
+        "an assign action's assignee only a member of staff's exact address, a team key (team:<id>) of a team " +
+        "that exists, or Unassigned; a notify action's to only assignee, inbox_managers, a member of staff's exact " +
+        "address or a team key. Anything else is refused (422) on create, update and a toggle that turns a rule on; " +
+        "a rule saved earlier that names anyone else skips that action at run time, does its other actions and " +
+        "notes the skip in its ticket-history line. A reply action must name an existing stock response; its " +
+        "stock_response_id is saved as a number. stop_after: once the rule has run for a message it keeps " +
+        "stopping later rules on any later pass of that event (a retry, another idle rule coming due), even if its " +
+        "own action has made its conditions false, and it also stops them when it matches but is held back by its " +
+        "limit of 10 runs an hour on the ticket. ticket.idle runs only the idle rules whose own trigger_options " +
+        "the ticket meets. From Axial, a rule that replies to customers cannot " +
         "be turned on or saved enabled (saving it disabled is fine), and while another enabled rule replies to " +
         "customers, enabled rules cannot be toggled, deleted, reordered or have their event, trigger_options, " +
         "conditions, actions or stop_after changed (name and description still can, and disabled rules that stay " +
@@ -115,7 +124,10 @@ export function registerWorkflowTools(server: McpServer): void {
           .max(20)
           .optional()
           .describe("[{type, ...its parameters}] (with_options lists the types and their parameters)"),
-        stop_after: z.boolean().optional().describe("Stop later rules running when this one matched"),
+        stop_after: z
+          .boolean()
+          .optional()
+          .describe("Stop later rules of the event once this one matched, also on a later pass after it already ran"),
         ids: z.array(z.number().int()).min(1).optional().describe("reorder: every rule id, first to run first"),
         ...ticketRef,
       },
