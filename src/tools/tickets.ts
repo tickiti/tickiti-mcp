@@ -89,13 +89,16 @@ export function registerTicketTools(server: McpServer): void {
         "Create a support ticket or, with kind: 'task', a task (staff work: its notes are never shown to a customer). " +
         "Provide originator_email_address and EXACTLY ONE of: " +
         "subject+content, OR template_identifier+data, OR intervention+data+uid. " +
-        "Omit queue_name to use the Inbox; queue_name is not allowed with intervention. " +
-        "An entry is a ticket or a task for life: a ticket goes only in a ticket queue and a task only in a task " +
-        "queue (list_queues gives each queue's content_type), never in Drafts, so a task needs queue_name naming a " +
-        "task queue (Inbox holds tickets); a queue of the other kind is refused (422, errors.queue). A task also " +
-        "refuses (422) is_public true (pass false: its first note is internal whatever is sent), intervention and " +
-        "uid, customer_name / company / other_fields, and use_passed_originator_as_responder unless the originator " +
-        "is the token owner and a member of staff. The result carries `kind`. " +
+        "queue_name is not allowed with intervention (the intervention's own queue is used). " +
+        "An entry is a ticket or a task for life (kind), whatever queue it is in: any queue but Drafts holds both. " +
+        "Omit queue_name to use the Inbox, or for a task the default queue for new tasks (chosen in System " +
+        "settings; tickiti_call('workflow/queues') gives its default_task_queue_id). A queue_name that does not " +
+        "exist is refused (422, errors.queue_name), and Drafts, or an intervention's queue that no longer exists, " +
+        "under errors.queue. A task is staff work, so it also refuses (422) is_public " +
+        "true (pass false: its first note is internal whatever is sent), intervention and uid, customer_name / " +
+        "company / other_fields, status on-hold (a task is open or closed, never on hold), an originator or " +
+        "participants who are not staff, and use_passed_originator_as_responder unless the originator is the " +
+        "token owner and a member of staff. The result carries `kind`. " +
         "is_public is REQUIRED: true = the opening message is customer-visible, false = a staff-only internal note. " +
         "You can set the assignee, priority, status and extra participants at creation, and give a contact form's " +
         "customer_name, company and other_fields. " +
@@ -105,17 +108,25 @@ export function registerTicketTools(server: McpServer): void {
         "owner) needs a key holding tickets:customer_impersonation, which only a System or API-user key can have; " +
         "it is refused (422, errors.use_passed_originator_as_responder) for an internal originator (a staff, " +
         "mailbox or system address, or one in the installation's own domains), with is_public false, with " +
-        "intervention or uid, and on a task. Such a message is never staff, its sender is marked unverified ('api'), and an " +
-        "internal note records which key posted it.",
+        "intervention or uid unless the call is an intervention with customer_message, and on a task. Such a " +
+        "message is never staff, its sender is marked unverified ('api'), and an internal note records which key " +
+        "posted it. " +
+        "customer_message (HTML, up to 65535 characters) opens an intervention's ticket with the customer's own " +
+        "words: only with intervention+data+uid, use_passed_originator_as_responder true and an originator who is " +
+        "not the token owner (otherwise 422, errors.customer_message; one with no text is refused too). It is " +
+        "posted first, public and in the customer's name, before the intervention's own staff and public " +
+        "responses, and the ticket stays in the intervention's queue. It is posted only on a ticket this call " +
+        "creates: a uid that matches an earlier ticket gets the intervention's responses alone.",
       inputSchema: {
         originator_email_address: z.string().email(),
         kind: z
           .enum(["ticket", "task"])
           .optional()
           .describe(
-            "What to create (default 'ticket'), fixed for life. A task must go to a task queue (queue_name; list_queues " +
-              "content_type 'task'), with is_public false, and takes no intervention/uid, customer_name, company, " +
-              "other_fields or posting in someone else's name.",
+            "What to create (default 'ticket'), fixed for life. A task goes in any queue but Drafts (queue_name; " +
+              "omitted, the default queue for new tasks), with is_public false, and takes no intervention/uid, " +
+              "customer_name, company, other_fields, on-hold status, non-staff originator or participants, or " +
+              "posting in someone else's name.",
           ),
         subject: z.string().optional().describe("Pair with content (subject+content path)"),
         content: z.string().optional().describe("HTML body; pair with subject"),
@@ -123,11 +134,23 @@ export function registerTicketTools(server: McpServer): void {
         template_identifier: z.string().optional().describe("Template.identifier; pair with data"),
         intervention: z.string().optional().describe("Intervention.name; pair with data and uid"),
         uid: z.string().optional().describe("Required only when intervention is set"),
+        customer_message: z
+          .string()
+          .max(65535)
+          .optional()
+          .describe(
+            "Intervention only: the customer's own message (HTML), posted first and public in their name. Needs " +
+              "use_passed_originator_as_responder true, an originator other than the token owner and a key holding " +
+              "tickets:customer_impersonation; not posted when the uid matches an earlier ticket.",
+          ),
         data: z
           .record(z.any())
           .optional()
           .describe("Token values for template/intervention paths"),
-        queue_name: z.string().optional().describe("TicketQueue.name; omit for Inbox"),
+        queue_name: z
+          .string()
+          .optional()
+          .describe("TicketQueue.name, any queue but Drafts; omit for the Inbox (a task: the default queue for new tasks)"),
         is_public: z
           .boolean()
           .describe("Visibility of the opening response: true = customer-visible, false = staff-only internal note. Required - there is no safe default."),
@@ -137,13 +160,14 @@ export function registerTicketTools(server: McpServer): void {
           .describe(
             "Post the opening response as the originator rather than the token owner. For an originator other than " +
               "the owner this needs a key holding tickets:customer_impersonation and is_public true, with no " +
-              "intervention/uid; an internal (staff, mailbox, system or own-domain) address is refused.",
+              "intervention/uid (except an intervention with customer_message); an internal (staff, mailbox, " +
+              "system or own-domain) address is refused.",
           ),
         assigned_to_email: z.string().optional().describe("Assign at creation: a staff email or a team key 'team:<id>' (list_teams / list_staff)."),
         priority: z.enum(["10", "20", "30", "40", "Low", "Normal", "High", "Urgent"]).optional().describe("Priority at creation."),
-        status: z.enum(["open", "on-hold", "closed"]).optional().describe("Status at creation (default open)."),
+        status: z.enum(["open", "on-hold", "closed"]).optional().describe("Status at creation (default open); a task is never on-hold."),
         on_hold_until: z.string().optional().describe("YYYY-MM-DD; required with status on-hold."),
-        participants: z.array(z.string().email()).optional().describe("Extra participants added as the ticket is created (list_staff gives staff addresses)."),
+        participants: z.array(z.string().email()).optional().describe("Extra participants added as the ticket is created (list_staff gives staff addresses); a task takes staff only."),
         strict_tags: z.boolean().optional().describe("Refuse the create if an @tag or #hashtag matches nobody (default: post it as text and report it in tag_warnings)."),
         customer_name: z.string().max(255).optional().describe("The customer's name, as a contact form gives it."),
         company: z.string().max(255).optional().describe("The customer's company."),
@@ -206,6 +230,7 @@ export function registerTicketTools(server: McpServer): void {
       if (a.template_identifier !== undefined) body.template_identifier = a.template_identifier;
       if (a.intervention !== undefined) body.intervention = a.intervention;
       if (a.uid !== undefined) body.uid = a.uid;
+      if (a.customer_message !== undefined) body.customer_message = a.customer_message; // top level, not under data
 
       if (a.queue_name !== undefined) {
         body.queue_name = a.queue_name; // the server now takes it top-level alone
@@ -225,12 +250,14 @@ export function registerTicketTools(server: McpServer): void {
         "Add a message to an existing ticket, or a note to a task. Set is_internal=true for a staff-only note; " +
         "everything posted on a task is a staff-only note whatever is_internal says. " +
         "You can change ticket attributes in the same call: status ('open' | 'on-hold' | " +
-        "'closed'), on_hold_until (YYYY-MM-DD, required with 'on-hold'), assigned_to_email " +
+        "'closed'; a task is never on hold, so 'on-hold' or on_hold_until on a task is refused, 422), " +
+        "on_hold_until (YYYY-MM-DD, required with 'on-hold'), assigned_to_email " +
         "(staff email, a team key 'team:<id>' from list_teams, or 'Unassigned'), priority " +
         "(Low|Normal|High|Urgent or 10|20|30|40), resolved " +
-        "(resolution-category id or name), queue (move the ticket to a queue by name: a ticket only to another " +
-        "ticket queue and a task only to another task queue, never Drafts; else 422, errors.queue), subject " +
-        "(rename the ticket), and add_participants / remove_participants. " +
+        "(resolution-category id or name), queue (move it to any queue by name but Drafts, a ticket or a task " +
+        "alike; Drafts or a queue that is gone is refused, 422, errors.queue), subject " +
+        "(rename the ticket), and add_participants / remove_participants (on a task, staff only: anyone else is " +
+        "refused, 422, errors.add_participants). " +
         "With no status given, a PUBLIC reply reopens a closed/on-hold ticket (keep_status: true stops it); an " +
         "internal note or an attribute-only change leaves the status and any hold date alone. on_hold_until on its own " +
         "puts the ticket on hold. content may be omitted ONLY when supplying a status/attribute change. The body " +
@@ -307,8 +334,8 @@ export function registerTicketTools(server: McpServer): void {
           .string()
           .optional()
           .describe(
-            "Move the ticket to this queue (TicketQueue.name; must exist). A ticket moves only to a ticket queue and a task " +
-              "only to a task queue, never to Drafts (list_queues gives names and content_type).",
+            "Move the ticket or task to this queue (TicketQueue.name; must exist, any queue but Drafts; list_queues " +
+              "gives the names).",
           ),
         subject: z
           .string()
@@ -317,7 +344,7 @@ export function registerTicketTools(server: McpServer): void {
         add_participants: z
           .array(z.string().email())
           .optional()
-          .describe("Emails to add as participants."),
+          .describe("Emails to add as participants (on a task, members of staff only)."),
         remove_participants: z
           .array(z.string().email())
           .optional()
@@ -353,8 +380,8 @@ export function registerTicketTools(server: McpServer): void {
       title: "Close (and optionally resolve) a ticket",
       description:
         "Close a ticket or task. Optionally pass content to post a final reply (a note, on a task) as it closes, and " +
-        "resolved (resolution-category id or name) to record the resolution, queue (move it to a queue by name: " +
-        "a ticket only to a ticket queue and a task only to a task queue, never Drafts; else 422, errors.queue) " +
+        "resolved (resolution-category id or name) to record the resolution, queue (move it to any queue by name " +
+        "but Drafts; Drafts or a queue that is gone is refused, 422, errors.queue) " +
         "and subject (rename). On a queue that tracks resolutions, " +
         "`resolved` is required (list_resolutions gives the categories). signature / signature_custom " +
         "choose the closing reply's signature, as on respond_to_ticket. from_email is " +
@@ -368,7 +395,7 @@ export function registerTicketTools(server: McpServer): void {
         content: z.string().optional().describe("Optional closing reply body (HTML)"),
         is_internal: z.boolean().optional().describe("Post the closing message as staff-only (default public if content given; on a task it is always a staff-only note)"),
         resolved: z.string().optional().describe("Resolution category id or name (resolution-tracking plan)"),
-        queue: z.string().optional().describe("Move it to this queue (TicketQueue.name; must exist, and hold the same kind: ticket or task)."),
+        queue: z.string().optional().describe("Move it to this queue (TicketQueue.name; must exist, not Drafts)."),
         subject: z.string().optional().describe("Rename the ticket to this subject."),
         signature: signatureShape,
         signature_custom: signatureCustomShape,
@@ -447,7 +474,8 @@ export function registerTicketTools(server: McpServer): void {
     {
       title: "Add ticket participants",
       description:
-        "Add one or more participants to a ticket (records a body-less audit entry). " +
+        "Add one or more participants to a ticket (records a body-less audit entry). Only staff join a task: " +
+        "on a task, an address that is not exactly a member of staff's is refused (422, errors.add_participants). " +
         "from_email is optional (defaults to the token owner). Identify the ticket by " +
         "ticket_number OR ticket_id. Requires tickets:write.",
       inputSchema: {

@@ -130,6 +130,14 @@ const CASES = [
   ["holidays", { action: "delete", id: 1 }, "workflow/holidays/delete", { id: 1 }],
   ["interventions", { action: "list" }, "workflow/interventions", {}],
   ["interventions", { action: "update", intervention_id: 1, assign_to_email: null }, "workflow/interventions/update", { intervention_id: 1, assign_to_email: null }],
+  ["interventions", { action: "update", intervention_id: 1, axial_note: "Waiting on sales" }, "workflow/interventions/update", { intervention_id: 1, axial_note: "Waiting on sales" }],
+  ["interventions", {
+    action: "create", name: "quote_request", title: "Quote", axial_note: "Waiting on sales", queue_name: "Sales",
+    create_urgent: false, notify_inbox_managers: true, remote_enabled: false, remote_timeout_seconds: 30,
+  }, "workflow/interventions/create", {
+    name: "quote_request", title: "Quote", axial_note: "Waiting on sales", queue_name: "Sales",
+    create_urgent: false, notify_inbox_managers: true, remote_enabled: false, remote_timeout_seconds: 30,
+  }],
   ["interventions", { action: "delete", intervention_id: 1 }, "workflow/interventions/delete", { intervention_id: 1 }],
   ["mail_attachment_rules", { action: "list", q: "zip" }, "mail/attachment-rules", { q: "zip" }],
   ["mail_attachment_rules", { action: "create", extension: "zip", rule: "always_allowed" }, "mail/attachment-rules/create", { extension: "zip", rule: "always_allowed" }],

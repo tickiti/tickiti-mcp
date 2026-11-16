@@ -159,6 +159,20 @@ try {
     assert.equal(seen.length, before);
   });
 
+  await ok("create_ticket sends customer_message at the top level with an intervention", async () => {
+    await call("create_ticket", {
+      originator_email_address: "c@example.com", intervention: "quote_request", uid: "u1", data: { product: "X" },
+      is_public: true, use_passed_originator_as_responder: true, customer_message: "<p>Q?</p>",
+    });
+    const b = seen.at(-1).body;
+    assert.equal(seen.at(-1).url, "/api/v1/tickets");
+    assert.equal(b.customer_message, "<p>Q?</p>");
+    assert.equal(b.data.customer_message, undefined);
+    assert.equal(b.use_passed_originator_as_responder, true);
+    assert.equal(b.intervention, "quote_request");
+    assert.equal(b.uid, "u1");
+  });
+
   await ok("create_template takes category, subcategory and keywords", async () => {
     await call("create_template", { type: "email", identifier: "t1", category: "A", subcategory: "B", keywords: "k" });
     assert.deepEqual(seen.at(-1).body, { type: "email", identifier: "t1", category: "A", subcategory: "B", keywords: "k" });

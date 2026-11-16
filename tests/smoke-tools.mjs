@@ -55,6 +55,11 @@ check(
 );
 const create = one.tools.find((t) => t.name === "create_ticket");
 check((create.inputSchema.required ?? []).includes("is_public"), "create_ticket requires is_public");
+check(Boolean(create.inputSchema.properties?.customer_message), "create_ticket takes customer_message");
+check(
+  Boolean(one.tools.find((t) => t.name === "interventions")?.inputSchema.properties?.axial_note),
+  "interventions takes axial_note",
+);
 check(JSON.parse(one.endpoints.content[0].text).endpoints.some((e) => e.action === "sent_mail.search" && /\bq\b/.test(e.body ?? "")), "list_endpoints shows body hints");
 
 const two = await tools({

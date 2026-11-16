@@ -38,9 +38,9 @@ export function registerWorkflowTools(server: McpServer): void {
         "tickets'): each ticket gets a history row authored by the admin, and cached perspectives and open views " +
         "refresh. Acts with the admin's authority: no per-queue rights needed and reply locks ignored. A ticket the " +
         "admin has an unsent draft on, one with no message or note at all, and one the engine refuses are skipped, listed " +
-        "and left in the queue. Both queues must hold the same kind - ticket queue to ticket queue, task queue to " +
-        "task queue - and neither may be Drafts: otherwise the whole call is refused (422, errors.from_queue / " +
-        "errors.to_queue; list_queues gives each queue's content_type). Up to `limit` (default and max 500) a call, oldest first: repeat while the reply's " +
+        "and left in the queue. Tickets and tasks move alike (any queue but Drafts holds both); neither queue may " +
+        "be Drafts: otherwise the whole call is refused (422, errors.from_queue / errors.to_queue). Up to `limit` " +
+        "(default and max 500) a call, oldest first: repeat while the reply's " +
         "`more` is true, passing its `next_after_id` as after_id (not while `remaining` is above 0: skipped tickets " +
         "stay, so that never ends). dry_run counts without moving. Requires workflow:write and an admin owner. (Use " +
         "update_tickets to move chosen tickets under the queue/assignee rule.)",
@@ -93,9 +93,9 @@ export function registerWorkflowTools(server: McpServer): void {
         "a rule saved earlier that names anyone else skips that action at run time, does its other actions and " +
         "notes the skip in its ticket-history line. A reply action must name an existing stock response; its " +
         "stock_response_id is saved as a number. A set_queue (Move to queue) action needs an existing queue, never " +
-        "Drafts (422); its kind is not checked on save, since a rule may match tickets and tasks alike, and at run " +
-        "time a move to a queue of the other kind (a ticket to a task queue, or the reverse) is skipped and noted " +
-        "on the history line while the rule's other actions run. stop_after:once the rule has run for a message it keeps " +
+        "Drafts (422), and moves tickets and tasks alike; at run time a move to a queue that has since gone is " +
+        "skipped and noted on the history line while the rule's other actions run, and so is putting a task on " +
+        "hold (a task is never on hold). stop_after:once the rule has run for a message it keeps " +
         "stopping later rules on any later pass of that event (a retry, another idle rule coming due), even if its " +
         "own action has made its conditions false, and it also stops them when it matches but is held back by its " +
         "limit of 10 runs an hour on the ticket. ticket.idle runs only the idle rules whose own trigger_options " +
@@ -201,9 +201,10 @@ export function registerWorkflowTools(server: McpServer): void {
     {
       title: "Recurring tasks: list, create, update, run now, delete",
       description:
-        "Workflow > Recurring tasks: a task raised on a schedule, in a task queue. list (with_options adds the task " +
-        "queues, staff, teams and checklist templates to choose from). create / update (only the fields sent " +
-        "change; queue_id must be a queue that holds tasks). run_now: raise the task now (a real task, notified " +
+        "Workflow > Recurring tasks: a task raised on a schedule, in any queue but Drafts. list (with_options adds " +
+        "the queues (task_queues: every queue but Drafts), staff, teams and checklist templates to choose from). " +
+        "create / update (only the fields sent change; queue_id must be an existing queue, not Drafts). run_now: " +
+        "raise the task now (a real task, notified " +
         "as any other) without moving its schedule. delete. " +
         "Requires an admin owner and workflow:read (list) or workflow:write.",
       inputSchema: {
@@ -211,7 +212,7 @@ export function registerWorkflowTools(server: McpServer): void {
         id: z.number().int().optional(),
         with_options: z.boolean().optional(),
         subject: z.string().max(255).optional(),
-        queue_id: z.number().int().optional().describe("A task queue (list with_options gives them)"),
+        queue_id: z.number().int().optional().describe("Any queue but Drafts (list with_options gives them)"),
         assigned_to_email: z.string().max(255).optional().describe("A staff email or 'team:<id>'"),
         priority: z.enum(["10", "20", "30", "40"]).optional().describe("10 Low, 20 Normal, 30 High, 40 Urgent"),
         next_at: z.string().optional().describe("The next occurrence, a date-time"),
@@ -288,7 +289,7 @@ export function registerWorkflowTools(server: McpServer): void {
   // ── Interventions ───────────────────────────────────────────────────────
 
   const interventionFields = [
-    "title", "queue_name", "completion_queue_name", "assign_to_email", "create_urgent", "notify_inbox_managers",
+    "title", "axial_note", "queue_name", "completion_queue_name", "assign_to_email", "create_urgent", "notify_inbox_managers",
     "fma_users", "fields", "remote_enabled", "remote_name", "remote_epilog_url", "remote_bearer_token",
     "remote_timeout_seconds",
   ];
@@ -311,10 +312,11 @@ export function registerWorkflowTools(server: McpServer): void {
     {
       title: "Intervention definitions: list, create, update, delete",
       description:
-        "Workflow > Interventions: the forms a system or person raises as a ticket (never a task, so queue_name and " +
-        "completion_queue_name must be ticket queues, not Drafts or a task queue: 422 on that field). update merges: send only what " +
+        "Workflow > Interventions: the forms a system or person raises as a ticket (never a task). queue_name and " +
+        "completion_queue_name must be existing queues, not Drafts (422 on that field). update merges: send only what " +
         "changes; null or [] clears a field; `fields`, when sent, replaces the form's whole field list (keep each " +
-        "field's id to keep it). (A remote's bearer token is generated with tickiti_call workflow " +
+        "field's id to keep it). axial_note is what Axial is told about one still waiting on a ticket (get_ticket's " +
+        "interventions_waiting); the payload's data never reaches it. (A remote's bearer token is generated with tickiti_call workflow " +
         `interventions.generate_token.) Requires an admin owner, ${interventionPlans}, and workflow:read (list) or ` +
         "workflow:write; without the plan every action is a 403.",
       inputSchema: {
@@ -322,13 +324,21 @@ export function registerWorkflowTools(server: McpServer): void {
         intervention_id: z.number().int().optional(),
         name: z.string().max(255).optional().describe("create: the identifier, letters, digits and _ only; cannot change"),
         title: z.string().max(255).optional(),
-        queue_name: z.string().max(255).optional().describe("Queue the ticket is raised in: an existing ticket queue, not Drafts"),
+        axial_note: z
+          .string()
+          .max(2000)
+          .nullable()
+          .optional()
+          .describe(
+            "What Axial is told about this intervention while one is waiting on a ticket (with its title, never its data); null or '' clears it",
+          ),
+        queue_name: z.string().max(255).optional().describe("Queue the ticket is raised in: an existing queue, not Drafts"),
         completion_queue_name: z
           .string()
           .max(255)
           .nullable()
           .optional()
-          .describe("Queue an accepted intervention's ticket moves to: an existing ticket queue, not Drafts"),
+          .describe("Queue an accepted intervention's ticket moves to: an existing queue, not Drafts"),
         assign_to_email: z.string().max(255).nullable().optional(),
         create_urgent: z.boolean().optional(),
         notify_inbox_managers: z.boolean().optional(),

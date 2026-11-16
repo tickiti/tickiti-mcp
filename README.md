@@ -18,7 +18,7 @@ general tools, so the whole surface is available without a separate tool per end
 
 | Tool | Ability | Purpose |
 |---|---|---|
-| `create_ticket` | `tickets:write` | Open a ticket (subject+content, template, or intervention), with assignee, priority, status and participants, and a contact form's `customer_name`, `company` and `other_fields`; `is_public` is required; `kind: 'task'` opens a task in a task queue instead |
+| `create_ticket` | `tickets:write` | Open a ticket (subject+content, template, or intervention), with assignee, priority, status and participants, and a contact form's `customer_name`, `company` and `other_fields`; `is_public` is required; `kind: 'task'` opens a task instead (in any queue but Drafts; with no queue, the default queue for new tasks); `customer_message` opens an intervention's ticket with the customer's own words (with `use_passed_originator_as_responder`) |
 | `respond_to_ticket` | `tickets:write` | Post a response; change status, hold, assignee, priority, queue, subject, participants; `send_full_email` for the whole reply by email; `signature` / `signature_custom` |
 | `close_ticket` | `tickets:write` | Close, optionally with a final reply (and its signature) and a resolution |
 | `edit_response` | `tickets:write` | Change a response in place (whole body, find/replace, visibility) with no notification — or publish an internal note and notify |
@@ -30,7 +30,7 @@ general tools, so the whole surface is available without a separate tool per end
 | `move_responses` / `copy_responses` / `split_ticket` | `tickets:write` | Repair a thread: move or copy responses, or split them off into a new linked ticket |
 | `change_originator` | `tickets:write` | Change who raised a ticket |
 | `delete_attachment` | `tickets:write` | Remove one attachment (a malicious file, say), keeping a record of it |
-| `get_ticket` / `list_responses` | `tickets:read` | A ticket's thread, participants and links; `fields` / `max_body_chars` keep long email threads small |
+| `get_ticket` / `list_responses` | `tickets:read` | A ticket's thread, participants, links and waiting interventions; `fields` / `max_body_chars` keep long email threads small |
 | `get_response` | `tickets:read` | One response by id, with `mail_auth`; `include` the email as it arrived (`original_html`) or the reply without its quoted history (`reply_text`) |
 | `query_tickets` | `tickets:read` | Search tickets |
 | `query_responses` / `export_responses` | `tickets:read` | Responses across tickets; counts and group-by tallies; NDJSON export to disk |
@@ -70,7 +70,7 @@ general tools, so the whole surface is available without a separate tool per end
 | `automations` | `workflow:read` / `write` | Automation rules: list (with the editor's vocabulary), create, update, enable, reorder, delete, dry-run test (`write`), recent runs |
 | `sla_policies` | `workflow:read` / `write` | SLA policies: list, create, update, reorder, delete |
 | `recurring_tasks` | `workflow:read` / `write` | Recurring tasks: list, create, update, run now, delete |
-| `checklist_templates` / `holidays` / `interventions` | `workflow:read` / `write` | Checklist templates; business-hours holidays; intervention definitions (update merges) |
+| `checklist_templates` / `holidays` / `interventions` | `workflow:read` / `write` | Checklist templates; business-hours holidays; intervention definitions (update merges; `axial_note` is what Axial is told while one waits) |
 | `run_report` | `reports:read` | Analytics reports, the SLA and satisfaction reports, Axial usage and Axial ratings |
 | `confirm_alert` | `supervisor:write` (superuser) | Confirm a latched health alert |
 | `get_token_info` | any | What this token can do: abilities, owner roles, plan |

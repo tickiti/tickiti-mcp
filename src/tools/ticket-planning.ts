@@ -36,8 +36,8 @@ export function registerTicketPlanningTools(server: McpServer): void {
         "it (a team manages a queue if any member does; Unassigned manages nothing); status, priority, hold date and " +
         "resolution need manage on the target queue, except that the current assignee (in person or via the team) " +
         "may close with a resolution; start/due dates need manage or being the personal assignee. A queue change " +
-        "keeps each entry's kind: a ticket moves only to a ticket queue and a task only to a task queue, never to " +
-        "Drafts, so in a selection of both the ones of the other kind are refused. Locked tickets, " +
+        "moves tickets and tasks alike, to any queue but Drafts. A task is never on hold, so on-hold or a hold " +
+        "date is refused for each task in the selection. Locked tickets, " +
         "tickets the owner has a draft on, Alert tickets, and closing on a queue that tracks resolutions without one " +
         "are refused. A ticket that does not exist and one the owner cannot see get the same reason ('no such " +
         "ticket, or not one the token owner can see'). Use dry_run first to see what would change. Find the " +

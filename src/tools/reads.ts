@@ -80,9 +80,9 @@ export function registerReadTools(server: McpServer): void {
   simpleRead(
     server,
     "list_queues",
-    "List queues: each one's content_type says what it holds, 'ticket' or 'task'. A ticket lives only in ticket " +
-      "queues and a task only in task queues; Drafts holds unposted drafts of both, and nothing is moved into it; " +
-      "Inbox and Drafts are always ticket queues",
+    "List queues: each one's name, flags, parking and outgoing mailbox. Any queue but Drafts holds tickets and " +
+      "tasks alike; Drafts holds only unposted drafts of both, and nothing is moved into it. The default queue " +
+      "for new tasks is chosen in System settings (tickiti_call('workflow/queues') gives default_task_queue_id)",
     "tickets/queues",
   );
 

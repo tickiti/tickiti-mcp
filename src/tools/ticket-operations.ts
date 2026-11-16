@@ -54,8 +54,7 @@ export function registerTicketOperationTools(server: McpServer): void {
       description:
         "Undo a delete: the ticket (or task) comes back, into the queue it was in, with the messages or notes deleted " +
         "with it, as they were: they start no automations, SLA timing, satisfaction survey, Axial reply or " +
-        "out-of-office reply. Refused (422) when that queue no longer exists or now holds the other kind (a ticket " +
-        "comes back only to a ticket queue, a task only to a task queue). From an Axial agent task's " +
+        "out-of-office reply. Refused (422) when that queue no longer exists. From an Axial agent task's " +
         "token, a restore that would bring back public messages the ticket's customer can read is not carried " +
         "out: a task with a ticket gets a 202 with status awaiting_approval and an approval card for a member of " +
         "staff; a task with no ticket, and a reply task, which only reads, get a 403. Requires tickets:write.",
@@ -192,8 +191,8 @@ export function registerTicketOperationTools(server: McpServer): void {
       description:
         "Move (or, with copy: true, copy) responses of one ticket onto a NEW ticket with the given subject, " +
         "linked to the original as its clone and carrying its originator and participants. The new entry is the " +
-        "source's kind: a ticket's messages make a ticket and a task's notes a task, so `queue` must be a queue " +
-        "of that kind and not Drafts (422, error 'refused'). A move never takes a task's description off its task, " +
+        "source's kind: a ticket's messages make a ticket and a task's notes a task. `queue` may be any queue " +
+        "but Drafts (Drafts: 422, error 'refused'; a queue that does not exist: 422, errors.queue). A move never takes a task's description off its task, " +
         "nor every message or note off the source, which keeps at least one (422). A new task's description is its " +
         "first copied note. Its messages or notes are " +
         "copies, so they start no automations, satisfaction survey, Axial reply or out-of-office reply, but the new " +
@@ -202,7 +201,7 @@ export function registerTicketOperationTools(server: McpServer): void {
       inputSchema: {
         response_ids: z.array(z.number().int()).min(1).max(500).describe("Messages or notes to split off (all from one ticket or task)"),
         subject: z.string().max(255).describe("Subject of the new ticket or task"),
-        queue: z.string().optional().describe("Queue for the new entry (default: the source's); a queue of the source's kind"),
+        queue: z.string().optional().describe("Queue for the new entry (default: the source's); any queue but Drafts"),
         copy: z.boolean().optional().describe("Copy instead of move"),
       },
     },
@@ -216,7 +215,8 @@ export function registerTicketOperationTools(server: McpServer): void {
       description:
         "Change a ticket's originator (raised-by) - e.g. one raised under the wrong one of a person's " +
         "addresses. The new address becomes a participant; the old one stays a participant (remove it " +
-        "separately if needed). Recorded on the thread. From an Axial agent task's token, a new originator who " +
+        "separately if needed). Recorded on the thread. On a task the new originator must be a member of staff " +
+        "(only staff join a task; anyone else is refused, 422). From an Axial agent task's token, a new originator who " +
         "is not a member of staff and not already on the ticket is not set (they would get every public reply and " +
         "could open the whole history): a task with a ticket, or one naming the ticket by ticket_number, gets a " +
         "202 with status awaiting_approval and an approval card for a member of staff; a reply task, which only " +

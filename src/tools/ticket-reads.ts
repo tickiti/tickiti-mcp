@@ -81,7 +81,9 @@ export function registerTicketReadTools(server: McpServer): void {
       description:
         "Fetch one ticket (or task) with its header and full thread of responses - a ticket's messages, a task's " +
         "notes - (public + internal staff notes) plus attachment metadata, its participants (with " +
-        "names and staff flags), the raised-by name, the queue name and its linked tickets. " +
+        "names and staff flags), the raised-by name, the queue name, its linked tickets and interventions_waiting " +
+        "(each intervention raised on it and not yet accepted: name, title and the definition's axial_note as " +
+        "note, never its data). " +
         "The header's `kind` is 'ticket' or 'task'; a task's initial_response_id is its description (its first " +
         "note; null on a ticket). Each response carries is_pinned and is_task_description. A task's description " +
         "is listed first, then any other pinned responses, then the rest oldest first. " +
