@@ -146,7 +146,11 @@ export function registerAxialPanelTools(server: McpServer): void {
         "blank secret keeps the saved one. skill_store_sync: catch up with the repository now. attachment_rules: what " +
         "Axial does with each attachment type; attachment_rule_save: no id creates (one rule per extension), mode " +
         "auto|preprocess|ignore; attachment_rule_delete. The AI connection and who is shown Axial stay browser-only. " +
-        "Requires a sysadmin owner, the AI-assistant plan, and administration:read (reads) or administration:write.",
+        "Requires the AI-assistant plan, administration:read (reads) or administration:write, and an owner who is an " +
+        "admin on a hosted customer site, or a sysadmin on a standalone install and on Tickiti's own support site. " +
+        "The skill store (skill_store, skill_store_update, skill_store_sync), axial_open_tools and the models and " +
+        "limits settings need a sysadmin owner, so on a hosted site Tickiti runs them and an admin's token cannot " +
+        "change them.",
       inputSchema: {
         action: actionEnum(settings),
         settings: z.record(z.any()).optional().describe("update: the settings to change, by key"),

@@ -91,6 +91,11 @@ function writeBodyFields(routes) {
   console.log(`Wrote ${FIELDS_OUT} (${Object.keys(fields).length} endpoints with body fields).`);
 }
 
+// The role shown for a route behind SysadminOrTenantAdmin (alias sysadmin_or_tenant_admin). A hosted
+// customer site has admins only, never sysadmins, so these routes pass for its admins; on Tickiti's own
+// sites (standalone Tickiti and support.tickiti.com, the "external systems") they still need a sysadmin.
+const ROLE_SYSADMIN_OR_TENANT_ADMIN = "admin on customer tenants, sysadmin on external systems";
+
 function parseMiddleware(mw) {
   const abilities = [];
   const plans = [];
@@ -104,6 +109,9 @@ function parseMiddleware(mw) {
       abilities.push(...m.split(":").slice(1).join(":").split(","));
     } else if (m.startsWith("App\\Http\\Middleware\\CheckPlanAccess:")) {
       plans.push(...m.split(":").slice(1).join(":").split(","));
+    } else if (m.endsWith("Middleware\\SysadminOrTenantAdmin")) {
+      // Before the Admin test only for clarity: "...\\SysadminOrTenantAdmin" does not end in "Middleware\\Admin".
+      roles.push(ROLE_SYSADMIN_OR_TENANT_ADMIN);
     } else if (m.endsWith("Middleware\\Admin")) {
       roles.push("admin");
     } else if (m.endsWith("Middleware\\Staff")) {
@@ -115,9 +123,11 @@ function parseMiddleware(mw) {
     }
   }
 
-  // Highest role wins for display purposes.
+  // Highest role wins for display purposes. Sysadmin-or-tenant-admin ranks above admin, because on
+  // Tickiti's own sites it asks for more than an admin.
   const role =
     roles.find((r) => r === "superuser") ??
+    roles.find((r) => r === ROLE_SYSADMIN_OR_TENANT_ADMIN) ??
     roles.find((r) => r === "admin") ??
     roles.find((r) => r === "staff") ??
     null;

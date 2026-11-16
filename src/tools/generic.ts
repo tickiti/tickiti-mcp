@@ -53,7 +53,8 @@ export function registerGenericTools(server: McpServer): void {
       description:
         "Discover available Tickiti v1 endpoints. Optionally filter by family " +
         `(one of: ${FAMILIES.join(", ")}) and/or action (e.g. 'users.' or 'users.queue_upsert'). Returns each ` +
-        "endpoint's action key, required abilities, role, plan gates and path params; method when it is not POST; " +
+        "endpoint's action key, required abilities, role, plan gates and path params (sysadmin: true needs a " +
+        "sysadmin owner, which a hosted customer site never has); method when it is not POST; " +
         "file_field for an upload; required body fields; and body (a note on the shape, where one is kept). With a " +
         "family or action filter, body_fields gives every body field with its validation rules (Laravel's, from the " +
         "controller: '?' is a field read without a rule). Where the instance lists its own endpoints, one it lacks " +

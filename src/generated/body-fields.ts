@@ -2469,7 +2469,6 @@ export const BODY_FIELDS: Record<string, BodyFields> = {
   },
   "api.v1.workflow.queues.create": {
     "fields": {
-      "content_type": "sometimes|in:ticket,task",
       "is_parked": "sometimes|boolean",
       "name": "required|string|max:255|unique:queues,name",
       "outgoing_mailbox_id": "required|integer|exists:mailboxes,id",
@@ -2513,7 +2512,6 @@ export const BODY_FIELDS: Record<string, BodyFields> = {
   },
   "api.v1.workflow.queues.update": {
     "fields": {
-      "content_type": "sometimes|in:ticket,task",
       "is_parked": "sometimes|boolean",
       "name": "sometimes|string|max:255|unique:queues,name|custom check",
       "outgoing_mailbox_id": "sometimes|integer|exists:mailboxes,id",

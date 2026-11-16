@@ -28,8 +28,8 @@ export const MANIFEST: RouteEntry[] = [
       "administration:read",
       "administration:write"
     ],
-    "role": "admin",
-    "sysadmin": true,
+    "role": "admin on customer tenants, sysadmin on external systems",
+    "sysadmin": false,
     "plans": [
       "has_ai_assistant"
     ],
@@ -46,8 +46,8 @@ export const MANIFEST: RouteEntry[] = [
     "abilities": [
       "administration:write"
     ],
-    "role": "admin",
-    "sysadmin": true,
+    "role": "admin on customer tenants, sysadmin on external systems",
+    "sysadmin": false,
     "plans": [
       "has_ai_assistant"
     ],
@@ -231,8 +231,8 @@ export const MANIFEST: RouteEntry[] = [
       "administration:read",
       "administration:write"
     ],
-    "role": "admin",
-    "sysadmin": true,
+    "role": "admin on customer tenants, sysadmin on external systems",
+    "sysadmin": false,
     "plans": [],
     "params": [],
     "idempotent": false,
@@ -247,8 +247,8 @@ export const MANIFEST: RouteEntry[] = [
     "abilities": [
       "administration:write"
     ],
-    "role": "admin",
-    "sysadmin": true,
+    "role": "admin on customer tenants, sysadmin on external systems",
+    "sysadmin": false,
     "plans": [],
     "params": [],
     "idempotent": false,
@@ -808,8 +808,8 @@ export const MANIFEST: RouteEntry[] = [
     "abilities": [
       "administration:write"
     ],
-    "role": null,
-    "sysadmin": true,
+    "role": "admin on customer tenants, sysadmin on external systems",
+    "sysadmin": false,
     "plans": [
       "has_ai_assistant"
     ],
@@ -827,8 +827,8 @@ export const MANIFEST: RouteEntry[] = [
       "administration:read",
       "administration:write"
     ],
-    "role": null,
-    "sysadmin": true,
+    "role": "admin on customer tenants, sysadmin on external systems",
+    "sysadmin": false,
     "plans": [
       "has_ai_assistant"
     ],
@@ -845,8 +845,8 @@ export const MANIFEST: RouteEntry[] = [
     "abilities": [
       "administration:write"
     ],
-    "role": null,
-    "sysadmin": true,
+    "role": "admin on customer tenants, sysadmin on external systems",
+    "sysadmin": false,
     "plans": [
       "has_ai_assistant"
     ],
@@ -1383,8 +1383,8 @@ export const MANIFEST: RouteEntry[] = [
       "administration:read",
       "administration:write"
     ],
-    "role": null,
-    "sysadmin": true,
+    "role": "admin on customer tenants, sysadmin on external systems",
+    "sysadmin": false,
     "plans": [
       "has_ai_assistant"
     ],
@@ -1401,8 +1401,8 @@ export const MANIFEST: RouteEntry[] = [
     "abilities": [
       "administration:write"
     ],
-    "role": null,
-    "sysadmin": true,
+    "role": "admin on customer tenants, sysadmin on external systems",
+    "sysadmin": false,
     "plans": [
       "has_ai_assistant"
     ],
@@ -1474,8 +1474,8 @@ export const MANIFEST: RouteEntry[] = [
     "abilities": [
       "skills:write"
     ],
-    "role": null,
-    "sysadmin": true,
+    "role": "admin on customer tenants, sysadmin on external systems",
+    "sysadmin": false,
     "plans": [
       "has_ai_assistant"
     ],
@@ -1492,8 +1492,8 @@ export const MANIFEST: RouteEntry[] = [
     "abilities": [
       "skills:write"
     ],
-    "role": null,
-    "sysadmin": true,
+    "role": "admin on customer tenants, sysadmin on external systems",
+    "sysadmin": false,
     "plans": [
       "has_ai_assistant"
     ],
@@ -1510,8 +1510,8 @@ export const MANIFEST: RouteEntry[] = [
     "abilities": [
       "skills:write"
     ],
-    "role": null,
-    "sysadmin": true,
+    "role": "admin on customer tenants, sysadmin on external systems",
+    "sysadmin": false,
     "plans": [
       "has_ai_assistant"
     ],
@@ -1528,8 +1528,8 @@ export const MANIFEST: RouteEntry[] = [
     "abilities": [
       "skills:write"
     ],
-    "role": null,
-    "sysadmin": true,
+    "role": "admin on customer tenants, sysadmin on external systems",
+    "sysadmin": false,
     "plans": [
       "has_ai_assistant"
     ],
@@ -1547,8 +1547,8 @@ export const MANIFEST: RouteEntry[] = [
       "skills:read",
       "skills:write"
     ],
-    "role": null,
-    "sysadmin": true,
+    "role": "admin on customer tenants, sysadmin on external systems",
+    "sysadmin": false,
     "plans": [
       "has_ai_assistant"
     ],
@@ -1566,8 +1566,8 @@ export const MANIFEST: RouteEntry[] = [
       "skills:read",
       "skills:write"
     ],
-    "role": null,
-    "sysadmin": true,
+    "role": "admin on customer tenants, sysadmin on external systems",
+    "sysadmin": false,
     "plans": [
       "has_ai_assistant"
     ],
@@ -1584,8 +1584,8 @@ export const MANIFEST: RouteEntry[] = [
     "abilities": [
       "skills:write"
     ],
-    "role": null,
-    "sysadmin": true,
+    "role": "admin on customer tenants, sysadmin on external systems",
+    "sysadmin": false,
     "plans": [
       "has_ai_assistant"
     ],
@@ -1602,8 +1602,8 @@ export const MANIFEST: RouteEntry[] = [
     "abilities": [
       "skills:write"
     ],
-    "role": null,
-    "sysadmin": true,
+    "role": "admin on customer tenants, sysadmin on external systems",
+    "sysadmin": false,
     "plans": [
       "has_ai_assistant"
     ],
@@ -1621,8 +1621,8 @@ export const MANIFEST: RouteEntry[] = [
       "skills:read",
       "skills:write"
     ],
-    "role": null,
-    "sysadmin": true,
+    "role": "admin on customer tenants, sysadmin on external systems",
+    "sysadmin": false,
     "plans": [
       "has_ai_assistant"
     ],
@@ -1639,8 +1639,8 @@ export const MANIFEST: RouteEntry[] = [
     "abilities": [
       "skills:write"
     ],
-    "role": null,
-    "sysadmin": true,
+    "role": "admin on customer tenants, sysadmin on external systems",
+    "sysadmin": false,
     "plans": [
       "has_ai_assistant"
     ],

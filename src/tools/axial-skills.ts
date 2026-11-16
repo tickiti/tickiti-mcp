@@ -7,8 +7,9 @@ import { toToolResult } from "../result.js";
  * Axial skills — read and edit the skills Tickiti's Axial assistant drafts from.
  *
  * Wraps /api/v1/axial/skills/*. Needs a token with skills:read / skills:write
- * whose owner is a system administrator on a plan with the AI assistant — the
- * same gate as Administration → Axial skills.
+ * on a plan with the AI assistant, whose owner is an admin on a hosted customer
+ * site or a sysadmin on a standalone install or Tickiti's own support site — the
+ * same gate as Administration → Axial skills (sysadmin_or_tenant_admin).
  *
  * A skill is addressed by `skill`: its key (e.g. updd.diagnostic) or its id. An
  * action is addressed by name within its skill. Updates change only the fields
@@ -48,7 +49,10 @@ const actionShape = z
     name: z.string().describe("Lower-case identifier; the tool name the model calls"),
     description: z.string().optional(),
     parameters: z.record(z.unknown()).optional().describe("JSON Schema object for the tool input"),
-    handler_type: z.enum(["local", "remote"]).optional(),
+    handler_type: z
+      .enum(["local", "remote"])
+      .optional()
+      .describe("remote is set only by a sysadmin, so never on a hosted customer site"),
     handler_ref: z.string().optional().describe("local: a handler from get_axial_skill_options; remote: the agent's action id"),
     permission: z.enum(["staff", "participant", "system"]).optional(),
     requires_confirmation: z.boolean().optional(),
@@ -176,6 +180,7 @@ export function registerAxialSkillTools(server: McpServer): void {
       description:
         "Add an action to a skill, or change the action with that name (only the fields passed change). " +
         "A new action needs description, handler_type, handler_ref and permission. Returns the whole skill. " +
+        "A remote action is a sysadmin's: on a hosted customer site an admin cannot add or change one. " +
         "Requires skills:write.",
       inputSchema: { skill: skillRef, action: actionShape },
     },

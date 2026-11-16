@@ -109,7 +109,9 @@ export function registerAccountTools(server: McpServer): void {
         "user types on their own profile within a day (staff only). whatsapp_status: the number's state and the " +
         "code's delivery. whatsapp_quiet: Do Not Disturb. whatsapp_remove: nothing more is sent to the number. An " +
         "admin never acts on a sysadmin's or superuser's account (only a sysadmin does), nor on the system account, " +
-        "nor on their own (that is their profile). Deleting a user and the two-factor reset are not available. " +
+        "nor on their own (that is their profile). A hosted customer site has admins only, no sysadmins; there only " +
+        "the account owner (user 1) changes the account owner's email or WhatsApp. Deleting a user and the two-factor " +
+        "reset are not available. " +
         "Requires an admin owner and administration:write (whatsapp_status: administration:read).",
       inputSchema: {
         action: actionEnum(account),
