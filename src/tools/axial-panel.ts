@@ -141,6 +141,12 @@ export function registerAxialPanelTools(server: McpServer): void {
         "The Axial menu's settings pages. get: every setting with what a blank one falls back to. update: `settings` " +
         "holds any of the keys get lists (not axial_visible_to), axial_open_tools (a list), axial_enabled, and the " +
         "reply style (ai_persona, ai_business_context, ai_signature); what is not sent is kept; all or nothing. " +
+        "axial_inbound_queues: the queue ids Axial answers a customer's incoming message in (empty: none); a queue " +
+        "is answered only when listed, so a new queue is not answered until it is added here or with axial_answers " +
+        "on the queue (workflow/queues/create or update). axial_inbound_exclude_queues is DEPRECATED, kept as an " +
+        "alias: read, it is every queue not answered; set, Axial answers every existing queue but those (a queue " +
+        "added later is still not answered). Send one of the two, not both. get's notices say when Axial is on and " +
+        "answering no queue. " +
         "skill_store: where the skills are kept (never the password). skill_store_update: store database|git; turning " +
         "git on checks the repository, then syncs, and a repository with skills in it REPLACES the skills here; a " +
         "blank secret keeps the saved one. skill_store_sync: catch up with the repository now. attachment_rules: what " +
