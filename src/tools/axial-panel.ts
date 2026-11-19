@@ -145,6 +145,14 @@ export function registerAxialPanelTools(server: McpServer): void {
         "since is refused; saved to the skill store as house-rules.md when skills are kept in git) and the sign-off " +
         "(ai_signature); what is not sent is kept; all or nothing. ai_persona and ai_business_context are kept for the " +
         "older engine only and are now part of the house rules. " +
+        "axial_reply_auto_send (true|false, off by default): with it on, a reply task's draft answering a customer's " +
+        "message is sent to the customer at once from the system account unless it needs a person: the model says " +
+        "so, a question card or an approval is waiting, a prepared action has not finished, failed or was declined, " +
+        "the draft is empty or names a link no tool returned, or the task stopped early; a draft overtaken on the " +
+        "ticket is held too. A redraft or revision staff asked for is never sent, nor anything on a development copy " +
+        "or in a replay, and Tickiti's server-wide stop holds every draft (get's auto_send_stopped says when it is " +
+        "on). axial_auto_send and axial_auto_send_threshold are DEPRECATED: the older engine's own (off|shadow|on " +
+        "with a confidence threshold), kept for that engine only and listed in get's deprecated_settings. " +
         "axial_inbound_queues: the queue ids Axial answers a customer's incoming message in (empty: none); a queue " +
         "is answered only when listed, so a new queue is not answered until it is added here or with axial_answers " +
         "on the queue (workflow/queues/create or update). axial_inbound_exclude_queues is DEPRECATED, kept as an " +
