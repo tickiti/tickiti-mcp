@@ -139,8 +139,12 @@ export function registerAxialPanelTools(server: McpServer): void {
       title: "Axial settings, skill store and attachment rules",
       description:
         "The Axial menu's settings pages. get: every setting with what a blank one falls back to. update: `settings` " +
-        "holds any of the keys get lists (not axial_visible_to), axial_open_tools (a list), axial_enabled, and the " +
-        "reply style (ai_persona, ai_business_context, ai_signature); what is not sent is kept; all or nothing. " +
+        "holds any of the keys get lists (not axial_visible_to), axial_open_tools (a list), axial_enabled, the " +
+        "house rules every customer reply follows (axial_house_rules: Markdown text; axial_first_lookups: tool names a " +
+        "reply runs first; axial_house_rules_base_commit: get's house_rules.commit, so a change made in the skill store " +
+        "since is refused; saved to the skill store as house-rules.md when skills are kept in git) and the sign-off " +
+        "(ai_signature); what is not sent is kept; all or nothing. ai_persona and ai_business_context are kept for the " +
+        "older engine only and are now part of the house rules. " +
         "axial_inbound_queues: the queue ids Axial answers a customer's incoming message in (empty: none); a queue " +
         "is answered only when listed, so a new queue is not answered until it is added here or with axial_answers " +
         "on the queue (workflow/queues/create or update). axial_inbound_exclude_queues is DEPRECATED, kept as an " +

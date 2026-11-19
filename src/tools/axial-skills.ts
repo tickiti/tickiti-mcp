@@ -14,6 +14,10 @@ import { toToolResult } from "../result.js";
  * A skill is addressed by `skill`: its key (e.g. updd.diagnostic) or its id. An
  * action is addressed by name within its skill. Updates change only the fields
  * passed. Instructions are Markdown.
+ *
+ * Fields follow Tickiti's one-engine design (step 10): hints, audience and governs.
+ * triggers and citation_set are still taken as their old names for one release;
+ * the older engine's composition is gone (Tickiti ignores it if sent).
  */
 
 /** Strip undefined keys so the body only carries supplied fields. */
@@ -23,25 +27,38 @@ function compact(obj: Record<string, unknown>): Record<string, unknown> {
 
 const skillRef = z.union([z.string(), z.number()]).describe("Skill key (e.g. updd.diagnostic) or id");
 
-const composition = z
-  .enum(["vetted", "guided", "open"])
+const audience = z
+  .enum(["customer", "staff", "reference"])
   .describe(
-    "vetted: product claims only from approved responses; guided: composes freely, cites approved content; open: no citation expected",
+    "Who is given the skill. customer: every customer reply, and staff conversations and tasks too; " +
+      "staff: staff conversations, tasks and investigations only, never a customer reply; " +
+      "reference: opened on demand by staff and developers, never in a customer reply",
   );
 
 const skillFields = {
   title: z.string().optional(),
-  description: z.string().optional().describe("Routing hint: what queries this skill is for"),
-  triggers: z.string().optional().describe("Keywords / example phrases for the router"),
+  description: z
+    .string()
+    .optional()
+    .describe("What the skill is for and who it is for: Axial reads it to decide whether to open the skill for a message"),
+  hints: z
+    .string()
+    .nullable()
+    .optional()
+    .describe("Words and phrases a customer might use, read by the planning step to pick likely skills"),
+  audience: audience.optional(),
   instructions: z.string().optional().describe("The skill body (Markdown)"),
-  composition: composition.optional(),
-  citation_set: z
+  governs: z
     .array(z.string())
     .optional()
-    .describe("Identifiers of approved responses (stock responses with AI relevance as_is/compose) the skill may cite"),
-  enabled: z.boolean().optional(),
-  ordinal: z.number().int().optional(),
-  parent_key: z.string().nullable().optional().describe("Key of a parent skill, or null"),
+    .describe(
+      "Titles of the stock responses this skill governs: one is used only once a skill governing it is open",
+    ),
+  enabled: z.boolean().optional().describe("A disabled skill is given to no task"),
+  ordinal: z.number().int().optional().describe("Order on the Skills page"),
+  parent_key: z.string().nullable().optional().describe("Key of a parent skill (\"see also\"), or null"),
+  triggers: z.string().nullable().optional().describe("Deprecated: the old name for hints"),
+  citation_set: z.array(z.string()).optional().describe("Deprecated: the old name for governs"),
 };
 
 const actionShape = z
@@ -101,8 +118,8 @@ export function registerAxialSkillTools(server: McpServer): void {
     {
       title: "List Axial skills",
       description:
-        "List Axial's skills: key, title, description, composition, enabled, reserved, action count. " +
-        "Instructions are not included — use get_axial_skill. Requires skills:read.",
+        "List Axial's skills: key, title, description, audience (customer, staff or reference), enabled, ordinal, " +
+        "action count and question card count. Instructions are not included — use get_axial_skill. Requires skills:read.",
       inputSchema: {},
     },
     async () => toToolResult(await callV1("axial/skills", {})),
@@ -123,7 +140,7 @@ export function registerAxialSkillTools(server: McpServer): void {
     {
       title: "Axial skill options",
       description:
-        "What a skill and an action can be set to: local handlers, permissions, compositions, and the field names. Requires skills:read.",
+        "What a skill and an action can be set to: local handlers, permissions, audiences, and the field names. Requires skills:read.",
       inputSchema: {},
     },
     async () => toToolResult(await callV1("axial/skills/options", {})),
@@ -152,7 +169,7 @@ export function registerAxialSkillTools(server: McpServer): void {
       title: "Update an Axial skill",
       description:
         "Change a skill's fields. Only the fields you pass change; instructions are replaced whole. " +
-        "The reserved skill (axial.core) cannot be renamed. Requires skills:write.",
+        "Requires skills:write.",
       inputSchema: {
         skill: skillRef,
         key: z.string().optional().describe("New key (rename)"),
@@ -167,7 +184,7 @@ export function registerAxialSkillTools(server: McpServer): void {
     "delete_axial_skill",
     {
       title: "Delete an Axial skill",
-      description: "Delete a skill and its actions. The reserved skill cannot be deleted. Requires skills:write.",
+      description: "Delete a skill and its actions. Requires skills:write.",
       inputSchema: { skill: skillRef },
     },
     async ({ skill }) => toToolResult(await callV1("axial/skills/delete", { skill })),

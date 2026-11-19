@@ -638,7 +638,11 @@ export const BODY_FIELDS: Record<string, BodyFields> = {
     "fields": {
       "ai_business_context": "sometimes|nullable|string|max:50000",
       "ai_persona": "sometimes|nullable|string|max:5000",
-      "ai_signature": "sometimes|nullable|string|max:500"
+      "ai_signature": "sometimes|nullable|string|max:500",
+      "axial_first_lookups": "sometimes|array|max:20",
+      "axial_first_lookups.*": "nullable|string|max:128",
+      "axial_house_rules": "sometimes|nullable|string|max:50000",
+      "axial_house_rules_base_commit": "sometimes|nullable|string|max:64"
     },
     "required": []
   },
