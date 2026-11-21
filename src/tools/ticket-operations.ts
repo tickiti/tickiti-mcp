@@ -134,7 +134,11 @@ export function registerTicketOperationTools(server: McpServer): void {
         "Read a single response (a ticket's message or a task's note) by its response_id alone - with its ticket number, flags, audit and " +
         "attachments - when you don't know which ticket it is on. Always says is_email_sourced and mail_auth " +
         "(what the receiving mail server concluded about the From address: pass, fail, or null; api when it was " +
-        "posted through the API in the sender's name, so nothing checked the address). include " +
+        "posted through the API in the sender's name, so nothing checked the address; form when it was typed into " +
+        "a contact form) and sender_confirmation (pending: held until the sender enters the code emailed to them, " +
+        "and Axial does not answer it until then; confirmed: by the code or by an integration allowed to say so; " +
+        "released: let go by a later email from the address or by staff, without confirming it; lapsed: never " +
+        "confirmed before its link ran out; or null). include " +
         "original_html: the email as it arrived, before inbound cleaning (null with has_original_html false when " +
         "the stored html already is the original; inline images stay cid: references, listed by cid in the " +
         "attachments); reply_text: the plain text without the quoted history. Requires tickets:read.",

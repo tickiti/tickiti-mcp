@@ -86,7 +86,7 @@ general tools, so the whole surface is available without a separate tool per end
 | `send_axial_message` / `check_axial_wait` / `answer_axial_card` / `rerun_axial` | `axial-chat:write` / `approve` / `manage` | Talk to Axial on a ticket, answer its cards, rerun it |
 | `axial_panel_action` | `axial-chat:write` / `approve` / `manage` | The panel's other buttons: approve or reject an action, a shared note's card, update the suggested response, respond again, add a note, cancel a queued request, give a task, investigate in depth, stop a task, choose the skill, turn back on, approve translations (also `settings:write` or `templates:write`), apply or discard a skill change |
 | `axial_conversations` | `axial-chat:read` / `write` | The token owner's own conversations with Axial outside any ticket |
-| `axial_settings` | `administration:read` / `write` (admin on a hosted site, sysadmin on a standalone install; the skill store is a sysadmin's) | The Axial settings pages, the skill store, Axial's attachment rules |
+| `axial_settings` | `administration:read` / `write` (admin on a hosted site, sysadmin on a standalone install; the skill store is a sysadmin's) | The Axial settings pages (including `axial_form_senders`: refuse, refer or allow, what Axial does with an address typed into a web form), the skill store, Axial's attachment rules |
 | `list_axial_skills` / `get_axial_skill` / ... | `skills:read` / `write` | Axial's skills |
 
 A tool that covers a resource takes an `action` (`list`, `create`, `update`, `delete` ...). An

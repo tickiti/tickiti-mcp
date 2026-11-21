@@ -110,7 +110,13 @@ export function registerTicketTools(server: McpServer): void {
         "mailbox or system address, or one in the installation's own domains), with is_public false, with " +
         "intervention or uid unless the call is an intervention with customer_message, and on a task. Such a " +
         "message is never staff, its sender is marked unverified ('api'), and an internal note records which key " +
-        "posted it. " +
+        "posted it. Where System settings asks contact-form senders to confirm their address, such a message is " +
+        "held: the sender is emailed a 4-character code, the result says awaiting_sender_confirmation (with " +
+        "sender_code_sent, false when the address has had its codes for now, and sender_confirmation_expires_at) and " +
+        "gives no secure_id until the code is entered, staff see it as awaiting the sender's confirmation, and Axial " +
+        "does not answer it until they enter the code. sender_confirmed true says the integration's own form already " +
+        "confirmed the address, so nothing is held or emailed; it needs a key that also holds " +
+        "tickets:sender_confirmed (422, errors.sender_confirmed, otherwise, and in anyone but a customer's name). " +
         "customer_message (HTML, up to 65535 characters) opens an intervention's ticket with the customer's own " +
         "words: only with intervention+data+uid, use_passed_originator_as_responder true and an originator who is " +
         "not the token owner (otherwise 422, errors.customer_message; one with no text is refused too). It is " +
@@ -163,6 +169,14 @@ export function registerTicketTools(server: McpServer): void {
               "intervention/uid (except an intervention with customer_message); an internal (staff, mailbox, " +
               "system or own-domain) address is refused.",
           ),
+        sender_confirmed: z
+          .boolean()
+          .optional()
+          .describe(
+            "With use_passed_originator_as_responder in a customer's name: the integration's own form already " +
+              "confirmed the address, so the message is not held for the emailed code. Needs a key holding " +
+              "tickets:sender_confirmed.",
+          ),
         assigned_to_email: z.string().optional().describe("Assign at creation: a staff email or a team key 'team:<id>' (list_teams / list_staff)."),
         priority: z.enum(["10", "20", "30", "40", "Low", "Normal", "High", "Urgent"]).optional().describe("Priority at creation."),
         status: z.enum(["open", "on-hold", "closed"]).optional().describe("Status at creation (default open); a task is never on-hold."),
@@ -193,6 +207,7 @@ export function registerTicketTools(server: McpServer): void {
       if (a.use_passed_originator_as_responder !== undefined) {
         body.use_passed_originator_as_responder = a.use_passed_originator_as_responder;
       }
+      if (a.sender_confirmed !== undefined) body.sender_confirmed = a.sender_confirmed;
 
       const data: Record<string, unknown> = { ...((a.data as Record<string, unknown>) ?? {}) };
       if (a.subject !== undefined) data.subject = a.subject;
@@ -275,7 +290,11 @@ export function registerTicketTools(server: McpServer): void {
         "reported as from_email_replaced). A System or API-user key may post as a member of staff or a system " +
         "address; posting as a customer needs a key holding tickets:customer_impersonation (else 422, " +
         "errors.from_email), never in an internal address (a mailbox, own-domain or staff-lookalike one: 422, " +
-        "errors.from_email, as on create), and such a response is never staff and its sender is marked unverified ('api').",
+        "errors.from_email, as on create), and such a response is never staff and its sender is marked unverified ('api'). " +
+        "Where System settings asks contact-form senders to confirm their address, a public message in a customer's " +
+        "name is held until they enter the code emailed to them (awaiting_sender_confirmation and sender_code_sent in the result; Axial " +
+        "does not answer it until then), unless an email from that address has already arrived on the ticket or " +
+        "sender_confirmed is true, which needs a key also holding tickets:sender_confirmed.",
       inputSchema: {
         ticket_number: z
           .string()
@@ -307,6 +326,13 @@ export function registerTicketTools(server: McpServer): void {
           .boolean()
           .optional()
           .describe("Leave the ticket's status as it is even for a public reply (no auto-reopen)."),
+        sender_confirmed: z
+          .boolean()
+          .optional()
+          .describe(
+            "In a customer's name: the integration's own form already confirmed the address, so the message is not " +
+              "held for the emailed code. Needs a key holding tickets:sender_confirmed.",
+          ),
         status: z
           .enum(["open", "on-hold", "closed"])
           .optional()

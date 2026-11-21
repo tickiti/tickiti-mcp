@@ -34,7 +34,8 @@ export function registerAxialChatTools(server: McpServer): void {
         "answers, which suggested-response version appeared and why, replies sent, waits for long-running work with " +
         "their run or task id), the latest suggested response with its note to staff, needs-a-person reason, " +
         "confidence and the stock responses it cites, every question card (open ones with their options; answered " +
-        "ones with who answered, what, and how each action went), approvals waiting, agent tasks, requests queued, " +
+        "ones with who answered, what, and how each action went), approvals waiting (with sender_unconfirmed while a " +
+        "customer address on the ticket was typed into a web form and is not confirmed), agent tasks, requests queued, " +
         "and who is working with Axial on the ticket. Customers' messages are not repeated: read them with " +
         "get_ticket. Pass `since` (the last_turn of an earlier read) for only what is new. Requires axial-chat:read.",
       inputSchema: {

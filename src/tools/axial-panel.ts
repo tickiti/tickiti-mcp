@@ -43,7 +43,9 @@ export function registerAxialPanelTools(server: McpServer): void {
       description:
         "The Axial panel's buttons (read the panel first with get_axial_chat, which gives the ids). " +
         "approve_action: approve or reject a proposed write action (call_id, decision approve|reject); approving runs " +
-        "it as the owner, who must have the right it asks for; never from an agent task's own token. shared_note: a " +
+        "it as the owner, who must have the right it asks for; never from an agent task's own token. An approval whose " +
+        "ticket has a customer address typed into a web form and not confirmed carries sender_unconfirmed, a line to " +
+        "read before approving: the change may be at the request of whoever typed the address. shared_note: a " +
         "shared note's card (note_id, decision send|publish|reject|discard; publish and reject need Manage access to " +
         "Axial). Both need axial-chat:approve. " +
         "redraft: 'Update suggested response' over the whole conversation. respond_again: another suggested response " +
@@ -159,6 +161,22 @@ export function registerAxialPanelTools(server: McpServer): void {
         "alias: read, it is every queue not answered; set, Axial answers every existing queue but those (a queue " +
         "added later is still not answered). Send one of the two, not both. get's notices say when Axial is on and " +
         "answering no queue. " +
+        "axial_form_senders (refuse|refer|allow): what Axial does with an address typed into a web form (a message an " +
+        "integration posted in the sender's name, mail_auth api, or sent through the contact form, mail_auth form). " +
+        "allow: Axial looks the customer up by it and answers it, as a reply goes only to that address; while it is " +
+        "unconfirmed, a reply that would also go to another customer on the ticket, or that can be read on the " +
+        "ticket's page a form or an integration handed out, needs a person, an action that is not a known read is " +
+        "proposed as a card, and every waiting card on the ticket says the request came from an unconfirmed form " +
+        "address (sender_unconfirmed). refer: as " +
+        "allow, and every reply to an unconfirmed form sender needs a person. An address counts as confirmed once an " +
+        "email from it arrives on the ticket, or its sender enters the code emailed to them (System settings' " +
+        "confirm_form_senders, shown in get's form_senders), or an integration allowed to says so (sender_confirmed). " +
+        "refuse is the LEGACY rule: nothing is looked up by an address an integration posted in the sender's name " +
+        "(mail_auth api), even after the sender emails from it, and a person checks every such reply; contact-form " +
+        "messages (mail_auth form) are answered like any other under it. Installs where Axial was on keep it until it is " +
+        "changed, every other install " +
+        "starts on allow, and the API always accepts it so a site can go back. get's form_senders.from_env says the " +
+        "server sets it (AXIAL_FORM_SENDERS), so a change here has no effect. " +
         "skill_store: where the skills are kept (never the password). skill_store_update: store database|git; turning " +
         "git on checks the repository, then syncs, and a repository with skills in it REPLACES the skills here; a " +
         "blank secret keeps the saved one. skill_store_sync: catch up with the repository now. attachment_rules: what " +

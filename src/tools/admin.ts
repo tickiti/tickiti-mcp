@@ -147,7 +147,10 @@ export function registerAdminTools(server: McpServer): void {
         "tickets:customer_impersonation (open tickets and post responses as the customer, for an integration " +
         "such as a website contact form) is granted by an admin, only on a key owned by System or an API user, " +
         "and only with tickets:write in the same abilities (it does not imply tickets:read); the key holds it " +
-        "only while its owner is still System or an API user. " +
+        "only while its owner is still System or an API user. tickets:sender_confirmed (say, when posting as the " +
+        "customer, that the integration's own form confirmed the address, so the message is not held for the " +
+        "code System settings may email the sender) follows the same rules and needs " +
+        "tickets:customer_impersonation in the same abilities. " +
         "Returns the plain-text token once. Requires administration:write.",
       inputSchema: {
         name: z.string().max(255).describe("Description of the key"),
@@ -172,7 +175,7 @@ export function registerAdminTools(server: McpServer): void {
       description:
         "Change a key's abilities (only to ones this token holds), IP allow-list (null clears it) or name. " +
         "tickets:customer_impersonation follows create_api_token's rules (System/API-user owner, with " +
-        "tickets:write). A key with legacy abilities (has_legacy in list_api_tokens) can have its IP allow-list " +
+        "tickets:write), and tickets:sender_confirmed too (with tickets:customer_impersonation). A key with legacy abilities (has_legacy in list_api_tokens) can have its IP allow-list " +
         "set or changed (never cleared: 422, errors.allowed_ip) and its name changed, but not its abilities: " +
         "make a new key instead. Requires administration:write.",
       inputSchema: {
