@@ -163,6 +163,8 @@ const CASES = [
   ["axial_conversations", { action: "message", conversation_id: 1, message: "hi" }, "axial/conversations/message", { conversation_id: 1, message: "hi" }],
   ["axial_conversations", { action: "stop", conversation_id: 1, task_id: 2 }, "axial/conversations/stop", { conversation_id: 1, task_id: 2 }],
   ["axial_conversations", { action: "update", conversation_id: 1, title: "T" }, "axial/conversations/update", { conversation_id: 1, title: "T" }],
+  ["axial_conversations", { action: "approve", conversation_id: 1, call_id: 7, decision: "reject", reason: "no" },
+    "axial/conversations/approval", { conversation_id: 1, call_id: 7, decision: "reject", reason: "no" }],
   ["axial_settings", { action: "get" }, "axial/settings", {}],
   ["axial_settings", { action: "update", settings: { axial_enabled: true, ai_persona: "p" } }, "axial/settings/update", { axial_enabled: true, ai_persona: "p" }],
   ["axial_settings", { action: "skill_store" }, "axial/skill-store", {}],

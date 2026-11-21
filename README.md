@@ -85,7 +85,7 @@ general tools, so the whole surface is available without a separate tool per end
 | `get_axial_chat` / `list_axial_runs` | `axial-chat:read` | A ticket's Axial panel and runs |
 | `send_axial_message` / `check_axial_wait` / `answer_axial_card` / `rerun_axial` | `axial-chat:write` / `approve` / `manage` | Talk to Axial on a ticket, answer its cards, rerun it |
 | `axial_panel_action` | `axial-chat:write` / `approve` / `manage` | The panel's other buttons: approve or reject an action, a shared note's card, update the suggested response, respond again, add a note, cancel a queued request, give a task, investigate in depth, stop a task, choose the skill, turn back on, approve translations (also `settings:write` or `templates:write`), apply or discard a skill change |
-| `axial_conversations` | `axial-chat:read` / `write` | The token owner's own conversations with Axial outside any ticket |
+| `axial_conversations` | `axial-chat:read` / `write` / `approve` | The token owner's own conversations with Axial outside any ticket, and the cards Axial asks for in them (`approve`) |
 | `axial_settings` | `administration:read` / `write` (admin on a hosted site, sysadmin on a standalone install; the skill store is a sysadmin's) | The Axial settings pages (including `axial_form_senders`: refuse, refer or allow, what Axial does with an address typed into a web form), the skill store, Axial's attachment rules |
 | `list_axial_skills` / `get_axial_skill` / ... | `skills:read` / `write` | Axial's skills |
 

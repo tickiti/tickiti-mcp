@@ -93,6 +93,11 @@ export function registerAxialPanelTools(server: McpServer): void {
     message: { path: "axial/conversations/message", fields: ["conversation_id", "message"], required: ["conversation_id", "message"] },
     stop: { path: "axial/conversations/stop", fields: ["conversation_id", "task_id"], required: ["conversation_id", "task_id"] },
     update: { path: "axial/conversations/update", fields: ["conversation_id", "title", "delete"], required: ["conversation_id", "title|delete"] },
+    approve: {
+      path: "axial/conversations/approval",
+      fields: ["conversation_id", "call_id", "decision", "reason"],
+      required: ["conversation_id", "call_id", "decision"],
+    },
   };
   server.registerTool(
     "axial_conversations",
@@ -100,11 +105,20 @@ export function registerAxialPanelTools(server: McpServer): void {
       title: "My conversations with Axial outside any ticket",
       description:
         "The token owner's OWN conversations with Axial out of any ticket (anyone else's is a 404). list: newest " +
-        "first. show: one, with its messages. create: start one with a message. message: continue one. Each message " +
+        "first. show: one, with its messages, its approvals (the cards Axial asked for in it, waiting for the owner; " +
+        "a pressed one still on its way has running: true) and watching (an outcome is still to come, so read it " +
+        "again). create: start one with a message. message: continue one. Each message " +
         "is an agent task on the agent host working as the owner, so create and message need a token holding every " +
         "ability the task would carry, an owner who may give Axial agent tasks, and an agent host. stop: stop the " +
-        "task answering (task_id). update: rename (title) or delete (delete: true; not while Axial is answering). " +
-        "Any axial-chat: ability reads; axial-chat:write changes. Needs the AI-assistant plan and a staff owner.",
+        "task answering (task_id). update: rename (title) or delete (delete: true; not while Axial is answering; " +
+        "its waiting cards are declined with it). Any axial-chat: ability reads; axial-chat:write changes. " +
+        "approve: press or decline a card in the conversation (call_id from show's approvals, decision " +
+        "approve|reject, reason when rejecting), as the card's buttons do. A card Axial asked for in a conversation " +
+        "lives there and nowhere else, a post on a ticket included: it is not on that ticket's panel. Approving " +
+        "runs it as the owner, who must have the right it asks for; a grouped card (count, items) goes ahead with " +
+        "every item at once. Axial is then told the outcome and carries on in the conversation. Needs " +
+        "axial-chat:approve, never an agent task's own token or Axial's, and only on a member of staff's instruction. " +
+        "Needs the AI-assistant plan and a staff owner.",
       inputSchema: {
         action: actionEnum(conversations),
         conversation_id: z.number().int().min(1).optional(),
@@ -112,6 +126,9 @@ export function registerAxialPanelTools(server: McpServer): void {
         task_id: z.number().int().optional().describe("stop: the task answering"),
         title: z.string().optional().describe("update: the new title"),
         delete: z.literal(true).optional().describe("update: delete the conversation"),
+        call_id: z.number().int().optional().describe("approve: the card's id (show's approvals[].id)"),
+        decision: z.enum(["approve", "reject"]).optional().describe("approve: approve or reject"),
+        reason: z.string().max(2000).optional().describe("approve: why, when rejecting"),
       },
     },
     async (args) => runAction("axial_conversations", conversations, args as Record<string, unknown>),
